@@ -2,8 +2,14 @@
   <div class="pdf-viewer">
     <div class="pdf-toolbar">
       <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
-      <a class="download-btn" href="https://cdn.timekettle.co/X1_Meeting/manual.pdff" download="X1_Meeting_manual.pdf">
+      <a class="download-btn" href="#" @click.prevent="downloadPdf">
         <el-button type="primary">下载</el-button>
+      </a>
+    </div>
+    <div class="mobile-download-bar">
+      <a class="mobile-download-btn" href="#" @click.prevent="downloadPdf">
+        <img src="../assets/download.svg" alt="download" />
+        <span>下载</span>
       </a>
     </div>
     <div class="pdf-loading" v-if="loading">
@@ -22,18 +28,19 @@
           @click="scrollToPage(page)"
         >
           <canvas :ref="(el) => { if (el) thumbRefs[page] = el }"></canvas>
-          <span class="page-num">{{ page }} / {{ totalPages }}</span>
+          <span class="page-num">{{ page }}</span>
         </div>
       </div>
       <div class="pdf-content" ref="contentRef">
         <div
           v-for="page in totalPages"
-          :key="'page-' + page"
+          :key="page"
           :data-page="page"
-          :ref="(el) => { if (el) pageRefs[page] = el }"
+          :ref="(el) => { if (el) wrapperRefs[page] = el }"
           class="page-wrapper"
+          :style="{ minHeight: pageHeight + 'px' }"
         >
-          <canvas :ref="(el) => { if (el) canvasRefs[page] = el }"></canvas>
+          <canvas v-if="visiblePages.has(page)" :ref="(el) => setCanvasRef(page, el)"></canvas>
         </div>
       </div>
     </div>
@@ -41,7 +48,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
@@ -52,26 +59,48 @@ const route = useRoute()
 const sncode = route.query.sncode as string | undefined
 void sncode
 
+const downloadPdf = async () => {
+  const res = await fetch(pdfUrl)
+  const blob = await res.blob()
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = 'X1_Meeting_manual.pdf'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(a.href)
+}
+
 const pdfUrl = 'https://cdn.timekettle.co/X1_Meeting/manual.pdf'
-// const pdfUrl = 'https://cdn.timekettle.co/pdfUpload/kkktest.pdf'
 const totalPages = ref(0)
 const currentPage = ref(1)
 const contentRef = ref<HTMLElement | null>(null)
 const sidebarRef = ref<HTMLElement | null>(null)
 const loading = ref(true)
 const loadingProgress = ref(0)
+const pageHeight = ref(600)
+const visiblePages = reactive(new Set<number>())
 
-const canvasRefs: Record<number, any> = {}
 const thumbRefs: Record<number, any> = {}
-const pageRefs: Record<number, any> = {}
+const wrapperRefs: Record<number, any> = {}
 
-let observer: IntersectionObserver | null = null
-let lazyObserver: IntersectionObserver | null = null
 let pdfDoc: PDFDocumentProxy | null = null
-const renderedPages = new Set<number>()
 let mainScale = 1
+const renderedPages = new Set<number>()
+const renderedThumbs = new Set<number>()
+const canvasElements: Record<number, HTMLCanvasElement> = {}
 
-const INITIAL_PAGES = 3
+let visibilityObserver: IntersectionObserver | null = null
+let currentPageObserver: IntersectionObserver | null = null
+
+const setCanvasRef = (page: number, el: any) => {
+  if (el) {
+    canvasElements[page] = el as HTMLCanvasElement
+    if (!renderedPages.has(page)) {
+      renderSinglePage(page)
+    }
+  }
+}
 
 const renderPage = async (page: PDFPageProxy, canvas: HTMLCanvasElement, scale: number) => {
   const viewport = page.getViewport({ scale })
@@ -79,67 +108,53 @@ const renderPage = async (page: PDFPageProxy, canvas: HTMLCanvasElement, scale: 
   canvas.height = viewport.height
   canvas.style.width = '100%'
   canvas.style.height = 'auto'
-  const ctx = canvas.getContext('2d')!
-  await page.render({ canvasContext: ctx, viewport, canvas } as any).promise
-}
-
-const scrollToPage = (pageNum: number) => {
-  const el = pageRefs[pageNum]
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    console.error('Failed to get canvas 2d context')
+    return
   }
-}
-
-const setupPageObserver = () => {
-  if (!contentRef.value) return
-  observer = new IntersectionObserver(
-    (entries) => {
-      let maxRatio = 0
-      let visiblePage = currentPage.value
-      entries.forEach((entry) => {
-        if (entry.isIntersecting && entry.intersectionRatio > maxRatio) {
-          maxRatio = entry.intersectionRatio
-          visiblePage = Number(entry.target.getAttribute('data-page'))
-        }
-      })
-      if (maxRatio > 0) {
-        currentPage.value = visiblePage
-        scrollThumbIntoView(visiblePage)
-      }
-    },
-    { root: contentRef.value, threshold: [0, 0.25, 0.5, 0.75, 1] }
-  )
-  for (let i = 1; i <= totalPages.value; i++) {
-    if (pageRefs[i]) observer.observe(pageRefs[i])
-  }
-}
-
-const setupLazyObserver = () => {
-  if (!contentRef.value) return
-  lazyObserver = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          const pageNum = Number(entry.target.getAttribute('data-page'))
-          if (!renderedPages.has(pageNum)) {
-            renderSinglePage(pageNum)
-          }
-        }
-      })
-    },
-    { root: contentRef.value, rootMargin: '200px 0px' }
-  )
-  for (let i = INITIAL_PAGES + 1; i <= totalPages.value; i++) {
-    if (pageRefs[i]) lazyObserver.observe(pageRefs[i])
-  }
+  await page.render({ canvasContext: ctx, viewport }).promise
 }
 
 const renderSinglePage = async (pageNum: number) => {
   if (!pdfDoc || renderedPages.has(pageNum)) return
+  const canvas = canvasElements[pageNum]
+  if (!canvas) return
   renderedPages.add(pageNum)
-  const page = await pdfDoc.getPage(pageNum)
-  if (canvasRefs[pageNum]) await renderPage(page, canvasRefs[pageNum], mainScale)
-  if (thumbRefs[pageNum]) await renderPage(page, thumbRefs[pageNum], 0.4)
+  try {
+    const page = await pdfDoc.getPage(pageNum)
+    await renderPage(page, canvas, mainScale)
+  } catch (e) {
+    renderedPages.delete(pageNum)
+    console.error(`Render page ${pageNum} failed:`, e)
+  }
+}
+
+const renderThumbnail = async (pageNum: number) => {
+  if (!pdfDoc || renderedThumbs.has(pageNum)) return
+  const canvas = thumbRefs[pageNum]
+  if (!canvas) return
+  renderedThumbs.add(pageNum)
+  try {
+    const page = await pdfDoc.getPage(pageNum)
+    await renderPage(page, canvas, 0.3)
+  } catch (e) {
+    renderedThumbs.delete(pageNum)
+  }
+}
+
+const renderAllThumbnails = async () => {
+  if (!pdfDoc) return
+  for (let i = 1; i <= totalPages.value; i++) {
+    await renderThumbnail(i)
+  }
+}
+
+const scrollToPage = (pageNum: number) => {
+  const el = wrapperRefs[pageNum]
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 }
 
 const scrollThumbIntoView = (pageNum: number) => {
@@ -151,30 +166,58 @@ const scrollThumbIntoView = (pageNum: number) => {
   }
 }
 
-const renderInitialPages = async () => {
-  if (!pdfDoc) return
-  const firstPage = await pdfDoc.getPage(1)
-  const baseViewport = firstPage.getViewport({ scale: 1.0 })
-  const containerWidth = contentRef.value?.clientWidth || 800
-  const displayWidth = Math.min(containerWidth, 800)
-  const dpr = Math.max(window.devicePixelRatio || 1, 2)
-  mainScale = (displayWidth / baseViewport.width) * dpr
+const setupObservers = () => {
+  const container = contentRef.value
+  if (!container) return
 
-  const count = Math.min(INITIAL_PAGES, pdfDoc.numPages)
-  for (let i = 1; i <= count; i++) {
-    await renderSinglePage(i)
+  // Observer to track which pages are near the viewport (large margin for preloading)
+  visibilityObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const pageNum = Number(entry.target.getAttribute('data-page'))
+        if (entry.isIntersecting) {
+          if (!visiblePages.has(pageNum)) {
+            visiblePages.add(pageNum)
+          }
+        } else {
+          if (visiblePages.has(pageNum)) {
+            visiblePages.delete(pageNum)
+            renderedPages.delete(pageNum)
+            delete canvasElements[pageNum]
+          }
+        }
+      }
+    },
+    { root: container, rootMargin: '800px 0px' }
+  )
+
+  // Observer to track which page is currently in view (for page counter)
+  currentPageObserver = new IntersectionObserver(
+    (entries) => {
+      let maxRatio = 0
+      let visiblePage = currentPage.value
+      for (const entry of entries) {
+        if (entry.isIntersecting && entry.intersectionRatio > maxRatio) {
+          maxRatio = entry.intersectionRatio
+          visiblePage = Number(entry.target.getAttribute('data-page'))
+        }
+      }
+      if (maxRatio > 0 && visiblePage !== currentPage.value) {
+        currentPage.value = visiblePage
+        scrollThumbIntoView(visiblePage)
+      }
+    },
+    { root: container, threshold: [0, 0.25, 0.5, 0.75, 1] }
+  )
+
+  for (let i = 1; i <= totalPages.value; i++) {
+    const el = wrapperRefs[i]
+    if (el) {
+      visibilityObserver.observe(el)
+      currentPageObserver.observe(el)
+    }
   }
-
-  setupPageObserver()
-  setupLazyObserver()
 }
-
-watch(totalPages, async (val) => {
-  if (val > 0) {
-    await nextTick()
-    await renderInitialPages()
-  }
-})
 
 onMounted(async () => {
   try {
@@ -191,7 +234,21 @@ onMounted(async () => {
     }
     pdfDoc = await loadingTask.promise
     totalPages.value = pdfDoc.numPages
+
+    const firstPage = await pdfDoc.getPage(1)
+    const baseViewport = firstPage.getViewport({ scale: 1.0 })
+
+    const containerWidth = window.innerWidth
+    const displayWidth = Math.min(containerWidth, 800)
+    const dpr = window.devicePixelRatio || 1
+    mainScale = (displayWidth / baseViewport.width) * dpr
+
+    pageHeight.value = Math.round(displayWidth * (baseViewport.height / baseViewport.width))
+
     loading.value = false
+    await nextTick()
+    setupObservers()
+    renderAllThumbnails()
   } catch (e) {
     console.error('PDF load failed:', e)
     loading.value = false
@@ -199,8 +256,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  observer?.disconnect()
-  lazyObserver?.disconnect()
+  visibilityObserver?.disconnect()
+  currentPageObserver?.disconnect()
   pdfDoc?.destroy()
 })
 </script>
@@ -333,7 +390,7 @@ onBeforeUnmount(() => {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 40px 60px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -354,28 +411,60 @@ onBeforeUnmount(() => {
   height: auto;
 }
 
-@media (max-width: 1024px) {
-  .pdf-sidebar {
-    width: 140px;
-    min-width: 140px;
-    padding: 8px;
-  }
-  .pdf-content {
-    padding: 24px 30px;
-  }
+.mobile-download-bar {
+  display: none;
+}
+
+.mobile-download-btn {
+  display: none;
 }
 
 @media (max-width: 768px) {
+  .pdf-toolbar {
+    display: none;
+  }
   .pdf-sidebar {
     display: none;
   }
   .pdf-content {
-    padding: 8px 0;
-    gap: 8px;
+    padding: 4px 0;
+    gap: 4px;
+    padding-bottom: 72px;
   }
   .page-wrapper {
     max-width: 100%;
     box-shadow: none;
+  }
+  .mobile-download-bar {
+    display: block;
+    width: 100%;
+    background: #fff;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 24px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+    z-index: 100;
+  }
+  .mobile-download-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    height: 48px;
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #191D26;
+    text-decoration: none;
+    color: #191D26;
+    font-size: 16px;
+    font-weight: 500;
+  }
+  .mobile-download-btn img {
+    width: 24px;
   }
 }
 </style>
