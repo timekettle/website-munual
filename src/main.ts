@@ -4,8 +4,8 @@ import 'element-plus/dist/index.css'
 import App from './App.vue'
 import router from './router'
 
-if (!Map.prototype.getOrInsertComputed) {
-  Map.prototype.getOrInsertComputed = function (key: any, callbackInsert: (key: any) => any) {
+if (!(Map.prototype as any).getOrInsertComputed) {
+  (Map.prototype as any).getOrInsertComputed = function (key: any, callbackInsert: (key: any) => any) {
     if (this.has(key)) {
       return this.get(key)
     }

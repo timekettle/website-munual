@@ -113,7 +113,7 @@ const renderPage = async (page: PDFPageProxy, canvas: HTMLCanvasElement, scale: 
     console.error('Failed to get canvas 2d context')
     return
   }
-  await page.render({ canvasContext: ctx, viewport }).promise
+  await page.render({ canvas, canvasContext: ctx, viewport }).promise
 }
 
 const renderSinglePage = async (pageNum: number) => {
