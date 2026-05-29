@@ -3,18 +3,18 @@
     <div class="pdf-toolbar">
       <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
       <a class="download-btn" href="#" @click.prevent="downloadPdf">
-        <el-button type="primary">下载</el-button>
+        <el-button type="primary">{{ locale.download }}</el-button>
       </a>
     </div>
     <div class="mobile-download-bar">
       <a class="mobile-download-btn" href="#" @click.prevent="downloadPdf">
         <img src="../assets/download.svg" alt="download" />
-        <span>下载</span>
+        <span>{{ locale.download }}</span>
       </a>
     </div>
     <div class="pdf-loading" v-if="loading">
       <div class="loading-spinner"></div>
-      <span class="loading-text">加载中... {{ loadingProgress }}%</span>
+      <span class="loading-text">{{ locale.loading }} {{ loadingProgress }}%</span>
       <div class="progress-bar">
         <div class="progress-fill" :style="{ width: loadingProgress + '%' }"></div>
       </div>
@@ -54,6 +54,32 @@ import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 
 GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+
+const i18n: Record<string, { download: string; loading: string }> = {
+  zh: { download: '下载', loading: '加载中...' },
+  en: { download: 'Download', loading: 'Loading...' },
+  es: { download: 'Descargar', loading: 'Cargando...' },
+  ja: { download: 'ダウンロード', loading: '読み込み中...' },
+  de: { download: 'Herunterladen', loading: 'Laden...' },
+  fr: { download: 'Télécharger', loading: 'Chargement...' },
+  ko: { download: '다운로드', loading: '로딩 중...' },
+  th: { download: 'ดาวน์โหลด', loading: 'กำลังโหลด...' },
+  ru: { download: 'Скачать', loading: 'Загрузка...' },
+  'zh-TW': { download: '下載', loading: '載入中...' },
+  tr: { download: 'İndir', loading: 'Yükleniyor...' },
+  uk: { download: 'Завантажити', loading: 'Завантаження...' },
+}
+
+const getLocale = (): { download: string; loading: string } => {
+  const lang = navigator.language || 'en'
+  if (i18n[lang]) return i18n[lang]
+  const prefix = lang.split('-')[0]
+  if (prefix === 'zh') return i18n['zh-TW']
+  if (i18n[prefix]) return i18n[prefix]
+  return i18n['en']
+}
+
+const locale = getLocale()
 
 const route = useRoute()
 const sncode = route.query.sncode as string | undefined
