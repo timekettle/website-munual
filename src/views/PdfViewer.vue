@@ -89,18 +89,19 @@ const downloadPdf = async () => {
   const res = await fetch(pdfUrl)
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
-
-  // Use iframe approach for better Safari compatibility.
-  // Safari may navigate the current page when clicking a blob URL <a> tag,
-  // which triggers bfcache and corrupts the pdf.js worker state on refresh.
-  const iframe = document.createElement('iframe')
-  iframe.style.display = 'none'
-  document.body.appendChild(iframe)
-  iframe.src = url
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'X1_Meeting_manual.pdf'
+  a.style.display = 'none'
+  document.body.appendChild(a)
+  a.click()
+  // Delay cleanup — Safari needs time to process the click event
+  // before the blob URL is revoked. Without this, Safari may silently
+  // fail to start the download.
   setTimeout(() => {
-    document.body.removeChild(iframe)
+    document.body.removeChild(a)
     URL.revokeObjectURL(url)
-  }, 1000)
+  }, 200)
 }
 
 const pdfUrl = 'https://cdn.timekettle.co/X1_Meeting/manual.pdf'
