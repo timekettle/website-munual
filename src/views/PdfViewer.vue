@@ -88,13 +88,19 @@ void sncode
 const downloadPdf = async () => {
   const res = await fetch(pdfUrl)
   const blob = await res.blob()
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = 'X1_Meeting_manual.pdf'
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(a.href)
+  const url = URL.createObjectURL(blob)
+
+  // Use iframe approach for better Safari compatibility.
+  // Safari may navigate the current page when clicking a blob URL <a> tag,
+  // which triggers bfcache and corrupts the pdf.js worker state on refresh.
+  const iframe = document.createElement('iframe')
+  iframe.style.display = 'none'
+  document.body.appendChild(iframe)
+  iframe.src = url
+  setTimeout(() => {
+    document.body.removeChild(iframe)
+    URL.revokeObjectURL(url)
+  }, 1000)
 }
 
 const pdfUrl = 'https://cdn.timekettle.co/X1_Meeting/manual.pdf'
@@ -245,7 +251,18 @@ const setupObservers = () => {
   }
 }
 
+// Safari bfcache: when the page is restored from back/forward cache,
+// pdfjs-dist's web worker is in a broken state (network connections closed,
+// worker context lost). Detect this and force a full reload.
+const handlePageShow = (event: PageTransitionEvent) => {
+  if (event.persisted) {
+    window.location.reload()
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener('pageshow', handlePageShow)
+
   try {
     const loadingTask = getDocument({
       url: pdfUrl,
@@ -282,6 +299,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pageshow', handlePageShow)
   visibilityObserver?.disconnect()
   currentPageObserver?.disconnect()
   pdfDoc?.destroy()
