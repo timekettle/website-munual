@@ -58,7 +58,7 @@ import { useRoute } from 'vue-router'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 
-GlobalWorkerOptions.workerSrc = import.meta.env.BASE_URL + 'pdf.worker.min.mjs'
+GlobalWorkerOptions.workerSrc = import.meta.env.BASE_URL + 'pdf.worker.min.js'
 
 const i18n: Record<string, { download: string; loading: string; retry: string }> = {
   zh: { download: '下载', loading: '加载中...', retry: '重试' },
