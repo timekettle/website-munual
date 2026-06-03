@@ -5,4 +5,7 @@ export default defineConfig({
   plugins: [
     vue(),
   ],
+  build: {
+    target: ['es2020', 'chrome80', 'safari13'],
+  },
 })
