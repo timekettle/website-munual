@@ -19,6 +19,11 @@
         <div class="progress-fill" :style="{ width: loadingProgress + '%' }"></div>
       </div>
     </div>
+    <div class="pdf-error" v-else-if="loadError">
+      <span class="error-icon">⚠️</span>
+      <span class="error-text">{{ errorMessage }}</span>
+      <el-button type="primary" @click="retryLoad">{{ locale.retry }}</el-button>
+    </div>
     <div class="pdf-body" v-else>
       <div class="pdf-sidebar" ref="sidebarRef">
         <div
@@ -53,24 +58,24 @@ import { useRoute } from 'vue-router'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 
-GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+GlobalWorkerOptions.workerSrc = import.meta.env.BASE_URL + 'pdf.worker.min.mjs'
 
-const i18n: Record<string, { download: string; loading: string }> = {
-  zh: { download: '下载', loading: '加载中...' },
-  en: { download: 'Download', loading: 'Loading...' },
-  es: { download: 'Descargar', loading: 'Cargando...' },
-  ja: { download: 'ダウンロード', loading: '読み込み中...' },
-  de: { download: 'Herunterladen', loading: 'Laden...' },
-  fr: { download: 'Télécharger', loading: 'Chargement...' },
-  ko: { download: '다운로드', loading: '로딩 중...' },
-  th: { download: 'ดาวน์โหลด', loading: 'กำลังโหลด...' },
-  ru: { download: 'Скачать', loading: 'Загрузка...' },
-  'zh-TW': { download: '下載', loading: '載入中...' },
-  tr: { download: 'İndir', loading: 'Yükleniyor...' },
-  uk: { download: 'Завантажити', loading: 'Завантаження...' },
+const i18n: Record<string, { download: string; loading: string; retry: string }> = {
+  zh: { download: '下载', loading: '加载中...', retry: '重试' },
+  en: { download: 'Download', loading: 'Loading...', retry: 'Retry' },
+  es: { download: 'Descargar', loading: 'Cargando...', retry: 'Reintentar' },
+  ja: { download: 'ダウンロード', loading: '読み込み中...', retry: 'リトライ' },
+  de: { download: 'Herunterladen', loading: 'Laden...', retry: 'Wiederholen' },
+  fr: { download: 'Télécharger', loading: 'Chargement...', retry: 'Réessayer' },
+  ko: { download: '다운로드', loading: '로딩 중...', retry: '재시도' },
+  th: { download: 'ดาวน์โหลด', loading: 'กำลังโหลด...', retry: 'ลองใหม่' },
+  ru: { download: 'Скачать', loading: 'Загрузка...', retry: 'Повторить' },
+  'zh-TW': { download: '下載', loading: '載入中...', retry: '重試' },
+  tr: { download: 'İndir', loading: 'Yükleniyor...', retry: 'Tekrar dene' },
+  uk: { download: 'Завантажити', loading: 'Завантаження...', retry: 'Повторити' },
 }
 
-const getLocale = (): { download: string; loading: string } => {
+const getLocale = (): { download: string; loading: string; retry: string } => {
   const lang = navigator.language || 'en'
   if (i18n[lang]) return i18n[lang]
   const prefix = lang.split('-')[0]
@@ -111,6 +116,8 @@ const contentRef = ref<HTMLElement | null>(null)
 const sidebarRef = ref<HTMLElement | null>(null)
 const loading = ref(true)
 const loadingProgress = ref(0)
+const loadError = ref(false)
+const errorMessage = ref('')
 const pageHeight = ref(600)
 const visiblePages = reactive(new Set<number>())
 
@@ -146,7 +153,7 @@ const renderPage = async (page: PDFPageProxy, canvas: HTMLCanvasElement, scale: 
     console.error('Failed to get canvas 2d context')
     return
   }
-  await page.render({ canvas, canvasContext: ctx, viewport }).promise
+  await page.render({ canvasContext: ctx, viewport }).promise
 }
 
 const renderSinglePage = async (pageNum: number) => {
@@ -261,42 +268,90 @@ const handlePageShow = (event: PageTransitionEvent) => {
   }
 }
 
-onMounted(async () => {
-  window.addEventListener('pageshow', handlePageShow)
+const loadPdf = async () => {
+  if (!pdfUrl) {
+    loadError.value = true
+    errorMessage.value = 'PDF URL is not available'
+    loading.value = false
+    return
+  }
 
-  try {
-    const loadingTask = getDocument({
+  // Reset state for retry
+  loadError.value = false
+  errorMessage.value = ''
+  loading.value = true
+  loadingProgress.value = 0
+
+  const attemptLoad = async (tier: number, useStream: boolean, useRange: boolean) => {
+    console.log(`PDF loading: Tier ${tier} (stream=${useStream}, range=${useRange})`)
+    const task = getDocument({
       url: pdfUrl,
-      disableAutoFetch: true,
-      disableStream: false,
-      rangeChunkSize: 65536,
+      withCredentials: false,
+      disableRange: !useRange,
+      disableStream: !useStream,
+      // disableAutoFetch only takes effect when disableStream is also true
+      ...(useStream ? {} : { disableAutoFetch: false }),
     })
-    loadingTask.onProgress = ({ loaded, total }: { loaded: number; total: number }) => {
+    task.onProgress = ({ loaded, total }: { loaded: number; total: number }) => {
       if (total > 0) {
         loadingProgress.value = Math.min(Math.round((loaded / total) * 100), 100)
       }
     }
-    pdfDoc = await loadingTask.promise
-    totalPages.value = pdfDoc.numPages
-
-    const firstPage = await pdfDoc.getPage(1)
-    const baseViewport = firstPage.getViewport({ scale: 1.0 })
-
-    const containerWidth = window.innerWidth
-    const displayWidth = Math.min(containerWidth, 800)
-    const dpr = window.devicePixelRatio || 1
-    mainScale = (displayWidth / baseViewport.width) * dpr
-
-    pageHeight.value = Math.round(displayWidth * (baseViewport.height / baseViewport.width))
-
-    loading.value = false
-    await nextTick()
-    setupObservers()
-    renderAllThumbnails()
-  } catch (e) {
-    console.error('PDF load failed:', e)
-    loading.value = false
+    const doc = await task.promise
+    return doc
   }
+
+  try {
+    // Tier 1: disableRange (no HTTP 206 CORS issues) + streaming (progressive render)
+    // Single full-file download, bytes processed as they arrive.
+    // Much better UX than Tier 2 because pages start rendering before download completes.
+    pdfDoc = await attemptLoad(1, true, false)
+  } catch (tier1Err) {
+    console.warn('PDF Tier 1 (stream) failed, falling back to Tier 2:', tier1Err)
+    // Reset progress for retry
+    loadingProgress.value = 0
+    try {
+      // Tier 2: disableStream — XHR-based full download, maximum compatibility
+      pdfDoc = await attemptLoad(2, false, false)
+    } catch (tier2Err) {
+      console.error('PDF Tier 2 (no-stream) also failed:', tier2Err)
+      loading.value = false
+      loadError.value = true
+      const lang = navigator.language || 'en'
+      if (lang.startsWith('zh')) {
+        errorMessage.value = 'PDF 加载失败，请检查网络连接后重试'
+      } else {
+        errorMessage.value = 'Failed to load PDF. Please check your network and try again.'
+      }
+      return
+    }
+  }
+
+  totalPages.value = pdfDoc.numPages
+
+  const firstPage = await pdfDoc.getPage(1)
+  const baseViewport = firstPage.getViewport({ scale: 1.0 })
+
+  const containerWidth = window.innerWidth
+  const displayWidth = Math.min(containerWidth, 800)
+  const dpr = window.devicePixelRatio || 1
+  mainScale = (displayWidth / baseViewport.width) * dpr
+
+  pageHeight.value = Math.round(displayWidth * (baseViewport.height / baseViewport.width))
+
+  loading.value = false
+  await nextTick()
+  setupObservers()
+  renderAllThumbnails()
+}
+
+const retryLoad = () => {
+  loadPdf()
+}
+
+onMounted(() => {
+  window.addEventListener('pageshow', handlePageShow)
+  loadPdf()
 })
 
 onBeforeUnmount(() => {
@@ -381,6 +436,27 @@ onBeforeUnmount(() => {
   height: 100%;
   background: #409eff;
   transition: width 0.3s;
+}
+
+.pdf-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.error-icon {
+  font-size: 48px;
+}
+
+.error-text {
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+  max-width: 280px;
+  line-height: 1.5;
 }
 
 .pdf-body {
