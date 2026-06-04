@@ -77,9 +77,10 @@ const i18n: Record<string, { download: string; loading: string; retry: string }>
 
 const getLocale = (): { download: string; loading: string; retry: string } => {
   const lang = navigator.language || 'en'
+  console.log("lang:", lang)
   if (i18n[lang]) return i18n[lang]
+  if (lang === 'zh-TW') return i18n['zh-TW']
   const prefix = lang.split('-')[0]
-  if (prefix === 'zh') return i18n['zh-TW']
   if (i18n[prefix]) return i18n[prefix]
   return i18n['en']
 }
