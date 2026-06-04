@@ -7,6 +7,11 @@ export default defineConfig({
     vue(),
     legacy({
       targets: ['Chrome >= 64', 'Safari >= 12', 'Firefox >= 60'],
+      modernTargets: ['Chrome >= 64', 'Safari >= 12', 'Firefox >= 60'],
+      modernPolyfills: true,
     }),
   ],
+  build: {
+    target: ['es2015', 'chrome64', 'safari12'],
+  },
 })
