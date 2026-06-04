@@ -90,7 +90,13 @@ const route = useRoute()
 const sncode = route.query.sncode as string | undefined
 void sncode
 
+const isWechat = () => /MicroMessenger/i.test(navigator.userAgent)
+
 const downloadPdf = async () => {
+  if (isWechat()) {
+    window.location.href = pdfUrl
+    return
+  }
   const res = await fetch(pdfUrl)
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
@@ -100,9 +106,6 @@ const downloadPdf = async () => {
   a.style.display = 'none'
   document.body.appendChild(a)
   a.click()
-  // Delay cleanup — Safari needs time to process the click event
-  // before the blob URL is revoked. Without this, Safari may silently
-  // fail to start the download.
   setTimeout(() => {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
