@@ -1,0 +1,1939 @@
+<template>
+  <div class="tutorial">
+
+    <!-- 顶部栏：tab（操作视频 / 使用手册）居中 + 语言下拉框靠右 -->
+    <header class="tutorial-header">
+      <!-- 品牌区：logo + 帮助中心（仅桌面端） -->
+      <div class="header-brand">
+        <img class="header-logo" :src="logoUrl" alt="" />
+        <span class="header-divider"></span>
+        <span class="header-help">{{ t.helpCenter }}</span>
+      </div>
+
+      <nav class="tabs">
+        <button
+          type="button"
+          class="tab"
+          :class="{ active: activeTab === 'video' }"
+          @click="switchTab('video')"
+        >
+          <span>{{ t.tabVideo }}</span>
+        </button>
+        <button
+          type="button"
+          class="tab"
+          :class="{ active: activeTab === 'manual' }"
+          @click="switchTab('manual')"
+        >
+          <span>{{ t.tabManual }}</span>
+        </button>
+      </nav>
+
+      <div class="lang-wrap">
+        <el-dropdown v-if="!isSmallScreen" trigger="click" @command="onLangChange" @visible-change="onLangDropdownVisible">
+          <span class="lang-trigger" :class="{ active: langDropdownVisible }">
+            <img class="lang-icon" :src="langIconUrl" alt="" />
+           
+            <span class="lang-label">{{ langLabel }}</span>
+            <svg class="lang-caret" viewBox="0 0 24 24" width="12" height="12">
+              <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="lang in languages"
+                :key="lang.code"
+                :command="lang.code"
+              >
+                {{ lang.label }}
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+
+        <!-- 小屏：点击打开语言抽屉 -->
+        <span v-else class="lang-trigger" :class="{ active: langDrawerOpen }" @click="openLangDrawer">
+          <span class="lang-label">{{ langLabel }}</span>
+          <svg class="lang-caret" viewBox="0 0 24 24" width="12" height="12">
+            <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+      </div>
+    </header>
+
+    <!-- 操作视频 tab -->
+    <main v-if="activeTab === 'video'" class="video-tab">
+      <div class="video-main">
+      <!-- 视频播放器（自定义控制条：无音量，含倍速与全屏） -->
+      <div class="video-player" ref="videoPlayerRef" @mouseenter="isHovering = true" @mouseleave="isHovering = false">
+        <video
+          ref="videoRef"
+          class="video-el"
+          :key="currentVideo.id"
+          :src="currentVideo.url"
+          :poster="posterUrl"
+          preload="metadata"
+          playsinline
+          @click="togglePlay"
+          @play="playing = true"
+          @pause="playing = false"
+          @ended="playing = false"
+          @waiting="buffering = true"
+          @playing="buffering = false"
+          @canplay="buffering = false"
+          @timeupdate="onTimeUpdate"
+          @loadedmetadata="onLoadedMetadata"
+        />
+
+        <!-- 缓冲加载提示 -->
+        <div v-if="buffering" class="video-buffering">
+          <div class="buffering-spinner"></div>
+        </div>
+
+        <!-- 中央播放按钮（未播放时） -->
+        <div v-if="!playing" class="video-placeholder" @click="togglePlay">
+          <button type="button" class="play-btn" aria-label="play">
+            <svg viewBox="0 0 24 24" width="34" height="34">
+              <path d="M8 5v14l11-7z" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- 底部控制条 -->
+        <div v-if="!fullscreen" class="video-controls" :class="{ 'controls-hidden': playing && !isHovering }" @click.stop>
+          <button type="button" class="ctrl-btn" :aria-label="playing ? 'pause' : 'play'" @click="togglePlay">
+            <svg v-if="playing" viewBox="0 0 24 24" width="18" height="18">
+              <path d="M6 5h4v14H6zM14 5h4v14h-4z" fill="currentColor" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="18" height="18">
+              <path d="M8 5v14l11-7z" fill="currentColor" />
+            </svg>
+          </button>
+
+          <div class="progress" ref="progressRef" @click="onSeek">
+            <div class="progress-track">
+              <div class="progress-played" :style="{ width: progress + '%' }"></div>
+              <span class="progress-dot" :style="{ left: progress + '%' }"></span>
+            </div>
+          </div>
+
+          <span class="time">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
+
+          <div class="speed-wrap">
+            <button type="button" class="speed-btn" @click.stop="toggleSpeedMenu">{{ speed }}</button>
+            <ul v-if="speedMenuOpen" class="speed-menu" @click.stop>
+              <li
+                v-for="s in speeds"
+                :key="s"
+                :class="{ active: s === speed }"
+                @click="setSpeed(s)"
+              >
+                {{ s }}
+              </li>
+            </ul>
+          </div>
+
+          <button
+            type="button"
+            class="ctrl-btn"
+            :aria-label="fullscreen ? 'exit fullscreen' : 'fullscreen'"
+            @click="toggleFullscreen"
+          >
+            <svg v-if="fullscreen" viewBox="0 0 24 24" width="18" height="18">
+              <path d="M8 3v3a2 2 0 0 1-2 2H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M16 3v3a2 2 0 0 0 2 2h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M8 21v-3a2 2 0 0 0-2-2H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M16 21v-3a2 2 0 0 1 2-2h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="18" height="18">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M16 3h3a2 2 0 0 1 2 2v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M8 21H5a2 2 0 0 1-2-2v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M16 21h3a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- 全屏专属 UI：标题 + 章节抽屉 + 底部控制条 -->
+        <div v-if="fullscreen" class="fs-title">{{ currentVideo.title }}</div>
+
+        <aside v-if="fullscreen && fsChaptersOpen" class="fs-chapters" @click.stop>
+          <div class="fs-chapters-header">{{ t.chapterList }}</div>
+          <ul class="fs-chapters-list">
+            <li
+              v-for="(item, i) in timeline"
+              :key="i"
+              class="fs-chapter"
+              :class="{ active: i === activeTimelineIndex }"
+              @click="playFsChapter(i)"
+            >
+              <span class="fs-chapter-time">
+                <svg class="fs-chapter-play" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" fill="currentColor" />
+                </svg>
+                {{ formatClock(item.seconds) }}
+              </span>
+              <span class="fs-chapter-label">{{ item.label }}</span>
+            </li>
+          </ul>
+        </aside>
+
+        <div v-if="fullscreen" class="fs-controls" @click.stop>
+          <div class="fs-progress" ref="fsProgressRef" @click="onFsSeek">
+            <div class="fs-progress-track">
+              <div class="fs-progress-played" :style="{ width: progress + '%' }"></div>
+              <span class="fs-progress-dot" :style="{ left: progress + '%' }"></span>
+            </div>
+          </div>
+          <div class="fs-controls-row">
+            <button type="button" class="fs-btn" :aria-label="playing ? 'pause' : 'play'" @click="togglePlay">
+              <svg v-if="playing" viewBox="0 0 24 24" width="24" height="24">
+                <path d="M6 5h4v14H6zM14 5h4v14h-4z" fill="currentColor" />
+              </svg>
+              <svg v-else viewBox="0 0 24 24" width="24" height="24">
+                <path d="M8 5v14l11-7z" fill="currentColor" />
+              </svg>
+            </button>
+            <span class="fs-time">
+              <span>{{ formatTime(currentTime) }}</span><span class="fs-time-total"> / {{ formatTime(duration) }}</span>
+            </span>
+            <span v-if="activeTimelineLabel" class="fs-chapter-chip">{{ activeTimelineLabel }}</span>
+            <span class="fs-spacer"></span>
+            <button type="button" class="fs-pill" @click="toggleFsChapters">{{ t.chapters }}</button>
+            <div class="fs-speed-wrap">
+              <button type="button" class="fs-pill fs-speed" @click.stop="toggleSpeedMenu">{{ speedShort }}</button>
+              <ul v-if="speedMenuOpen" class="speed-menu fs-speed-menu" @click.stop>
+                <li
+                  v-for="s in speeds"
+                  :key="s"
+                  :class="{ active: s === speed }"
+                  @click="setSpeed(s)"
+                >
+                  {{ s }}
+                </li>
+              </ul>
+            </div>
+            <button type="button" class="fs-btn" aria-label="exit fullscreen" @click="toggleFullscreen">
+              <svg viewBox="0 0 24 24" width="24" height="24">
+                <path d="M8 3v3a2 2 0 0 1-2 2H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M16 3v3a2 2 0 0 0 2 2h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M8 21v-3a2 2 0 0 0-2-2H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M16 21v-3a2 2 0 0 1 2-2h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 章节标题 + 目录按钮 -->
+      <div class="chapters-header">
+        <h2 class="chapters-title">{{ currentVideo.title }}</h2>
+        <button type="button" class="dir-btn" @click="openDrawer">
+          <span>{{ t.directory }}</span>
+        </button>
+      </div>
+
+      <!-- 时间线 -->
+      <ul v-if="timeline.length > 0" class="timeline">
+        <li
+          v-for="(item, i) in timeline"
+          :key="i"
+          class="timeline-item"
+          :class="{ active: i === activeTimelineIndex }"
+          @click="playAt(i)"
+        >
+          <div class="timeline-chip">
+            <svg class="timeline-play" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" fill="currentColor" />
+            </svg>
+            <span class="timeline-time">{{ formatClock(item.seconds) }}</span>
+          </div>
+          <span class="timeline-label">{{ item.label }}</span>
+        </li>
+      </ul>
+      </div>
+
+      <!-- 目录侧边栏（桌面端，宽屏时取代抽屉） -->
+      <aside class="video-sidebar">
+        <div class="sidebar-header">
+          <img class="sidebar-header-icon" :src="directoryIconUrl" alt="" />
+          <span class="sidebar-title">{{ t.directory }}</span>
+        </div>
+        <ul class="sidebar-list">
+          <li
+            v-for="item in videos"
+            :key="item.id"
+            class="catalog-item"
+            :class="{ active: item.id === currentVideo.id }"
+            @click="selectVideo(item.id)"
+          >
+            <img class="item-icon" :src="item.icon" :alt="item.title" />
+            <div class="item-info">
+              <p class="item-title">{{ item.title }}</p>
+              <p class="item-duration">
+                {{ item.duration }}
+                <span v-if="item.id === currentVideo.id" class="item-eq" aria-hidden="true">
+                  <i></i><i></i><i></i>
+                </span>
+              </p>
+            </div>
+          </li>
+        </ul>
+      </aside>
+    </main>
+
+    <!-- 使用手册 tab：内嵌 PdfViewer -->
+    <main v-else class="manual-tab">
+      <PdfViewer embedded :lang="currentLang" />
+    </main>
+
+    <!-- 目录抽屉（自下而上） -->
+    <transition name="mask-fade">
+      <div v-if="drawerOpen" class="drawer-mask" @click="closeDrawer"></div>
+    </transition>
+    <transition name="drawer-slide">
+      <div v-if="drawerOpen" class="drawer" :style="{ top: drawerTop + 'px' }">
+        <div class="drawer-header">
+          <span class="drawer-title">{{ t.directory }}</span>
+          <button type="button" class="drawer-close" aria-label="close" @click="closeDrawer">
+            <svg viewBox="0 0 24 24" width="30" height="30">
+              <path d="M4 4l16 16M20 4L4 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+        <ul class="drawer-list">
+          <li
+            v-for="item in videos"
+            :key="item.id"
+            class="catalog-item"
+            :class="{ active: item.id === currentVideo.id }"
+            @click="selectVideo(item.id)"
+          >
+            <img class="item-icon" :src="item.icon" :alt="item.title" />
+            <div class="item-info">
+              <p class="item-title">{{ item.title }}</p>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </transition>
+
+    <!-- 语言抽屉（小屏，自下而上） -->
+    <transition name="mask-fade">
+      <div v-if="langDrawerOpen" class="drawer-mask" @click="closeLangDrawer"></div>
+    </transition>
+    <transition name="drawer-slide">
+      <div v-if="langDrawerOpen" class="drawer lang-drawer" :style="{ top: drawerTop + 'px' }">
+        <div class="drawer-header">
+          <span class="drawer-title">{{ t.langSelect }}</span>
+          <button type="button" class="drawer-close" aria-label="close" @click="closeLangDrawer">
+            <svg viewBox="0 0 24 24" width="30" height="30">
+              <path d="M4 4l16 16M20 4L4 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+        <ul class="lang-list">
+          <li
+            v-for="lang in languages"
+            :key="lang.code"
+            class="lang-item"
+            :class="{ active: lang.code === currentLang }"
+            @click="selectLang(lang.code)"
+          >
+            <div class="lang-item-info">
+              <p class="lang-item-name">{{ lang.label }}</p>
+              <p class="lang-item-sub">{{ lang.zhName }}</p>
+            </div>
+            <svg v-if="lang.code === currentLang" class="lang-check" viewBox="0 0 24 24" width="24" height="24">
+              <path d="M5 12l5 5L20 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </li>
+        </ul>
+      </div>
+    </transition>
+
+
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import posterUrl from '../assets/tutorial/video-poster.svg'
+import iconLight from '../assets/icon_light.svg'
+import iconGroup from '../assets/icon_group.svg'
+import iconAsk from '../assets/icon_ask.svg'
+import iconConversion from '../assets/icon_conversion.svg'
+import iconListen from '../assets/icon_listen.svg'
+import iconVideo from '../assets/icon_video.svg'
+import iconOther from '../assets/icon_other.svg'
+const videoUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/X1_meeting.mp4'
+const groupMeetingUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/Group_meeting.mp4'
+const twoPersonConversationUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/two_person_conversation.mp4'
+const audienceTranslationUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/audience_translation.mp4'
+const callVideoUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/call_video.mp4'
+const holdInHandUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/hold_in_hand.mp4'
+const otherUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/other.mp4'
+import logoUrl from '../assets/tutorial/logo.svg'
+import directoryIconUrl from '../assets/tutorial/icon_directory.svg'
+import langIconUrl from '../assets/tutorial/icon_lang.svg'
+import PdfViewer from './PdfViewer.vue'
+
+type TabKey = 'video' | 'manual'
+
+interface VideoItem {
+  id: number
+  title: string
+  icon: string
+  url: string
+  duration: string
+}
+
+interface TimelineItem {
+  seconds: number
+  label: string
+}
+
+interface Messages {
+  tabVideo: string
+  tabManual: string
+  directory: string
+  manualEmpty: string
+  helpCenter: string
+  chapters: string
+  chapterList: string
+  langSelect: string
+  // 视频标题
+  videoOverview: string
+  videoGroupMeeting: string
+  videoTwoPerson: string
+  videoListen: string
+  videoHandheld: string
+  videoCall: string
+  videoOther: string
+  // 时间线章节
+  tUnbox: string
+  tActivate: string
+  tOffline: string
+  tSpeed: string
+  tExportMinutes: string
+  tUploadLogs: string
+  tSystemUpdate: string
+  tFactoryReset: string
+  tEartips: string
+  tHost: string
+  tMember: string
+  tPhone: string
+  tComputer: string
+  tMicNotes: string
+  tLangSwitch: string
+  tMeetingSettings: string
+  tKeySettings: string
+}
+
+type MsgKey = keyof Messages
+
+interface TimelineMetaItem {
+  seconds: number
+  key: MsgKey
+}
+
+interface VideoMeta {
+  id: number
+  titleKey: MsgKey
+  icon: string
+  url: string
+  duration: string
+}
+
+const languages = [
+  { code: 'zh', label: '中文', zhName: '简体中文' },
+  { code: 'en', label: 'English', zhName: '英语' },
+  { code: 'es', label: 'Español', zhName: '西班牙语' },
+  { code: 'ja', label: '日本語', zhName: '日语' },
+  { code: 'de', label: 'Deutsch', zhName: '德语' },
+  { code: 'fr', label: 'Français', zhName: '法语' },
+  { code: 'ko', label: '한국어', zhName: '韩语' },
+  { code: 'th', label: 'ไทย', zhName: '泰语' },
+  { code: 'ru', label: 'Русский', zhName: '俄语' },
+  { code: 'zh-TW', label: '繁體中文', zhName: '繁体中文' },
+  { code: 'tr', label: 'Türkçe', zhName: '土耳其语' },
+  { code: 'uk', label: 'Українська', zhName: '乌克兰语' },
+] as const
+
+const messages: Record<string, Messages> = {
+  zh: { tabVideo: '操作视频', tabManual: '使用手册', directory: '目录', manualEmpty: '暂无内容', helpCenter: '帮助中心', langSelect: '语言选择', chapters: '章节', chapterList: '章节目录', videoOverview: '使用教学汇总', videoGroupMeeting: '多人会议模式', videoTwoPerson: '双人对话模式', videoListen: '旁听翻译模式', videoHandheld: '手持翻译模式', videoCall: '通话/视频翻译模式', videoOther: '其他', tUnbox: '开箱', tActivate: '激活', tOffline: '离线翻译模式', tSpeed: '翻译速度调整', tExportMinutes: '导出会议纪要', tUploadLogs: '上传日志', tSystemUpdate: '系统和耳机升级', tFactoryReset: '恢复出厂设置', tEartips: '耳套和耳挂', tHost: '主持人端操作', tMember: '成员端操作', tPhone: '手机端操作', tComputer: '电脑端操作', tMicNotes: '耳机收音注意事项', tLangSwitch: '语种切换说明', tMeetingSettings: '主持人-会议设置讲解', tKeySettings: '主持人-关键设置开关说明' },
+  en: { tabVideo: 'Tutorial Videos', tabManual: 'User Manual', directory: 'Video List', manualEmpty: 'No content yet', helpCenter: 'Help Center', langSelect: 'Language', chapters: 'Chapters', chapterList: 'Chapter List', videoOverview: 'Tutorial Overview', videoGroupMeeting: 'Group Meeting', videoTwoPerson: 'Two-person Conversation', videoListen: 'Listen Translation', videoHandheld: 'Handheld Translation', videoCall: 'Call & Video Translation', videoOther: 'Others', tUnbox: 'Unboxing', tActivate: 'Activation', tOffline: 'Offline Translation', tSpeed: 'Translation Speed', tExportMinutes: 'Export Meeting Minutes', tUploadLogs: 'Upload Logs', tSystemUpdate: 'System & Earbuds Update', tFactoryReset: 'Factory Reset', tEartips: 'Eartips & Ear Hooks', tHost: 'Host Controls', tMember: 'Member Controls', tPhone: 'Phone App', tComputer: 'Desktop App', tMicNotes: 'Earbud Mic Tips', tLangSwitch: 'Language Switching', tMeetingSettings: 'Host: Meeting Settings', tKeySettings: 'Host: Key Settings' },
+  es: { tabVideo: 'Vídeos de uso', tabManual: 'Manual de usuario', directory: 'Lista de vídeos', manualEmpty: 'Sin contenido', helpCenter: 'Centro de ayuda', langSelect: 'Idioma', chapters: 'Capítulos', chapterList: 'Lista de capítulos', videoOverview: 'Resumen de tutoriales', videoGroupMeeting: 'Reunión en grupo', videoTwoPerson: 'Conversación a dos', videoListen: 'Traducción en escucha', videoHandheld: 'Traducción de mano', videoCall: 'Traducción en llamadas', videoOther: 'Otros', tUnbox: 'Desembalaje', tActivate: 'Activación', tOffline: 'Traducción sin conexión', tSpeed: 'Velocidad de traducción', tExportMinutes: 'Exportar acta de reunión', tUploadLogs: 'Subir registros', tSystemUpdate: 'Actualización de sistema y auriculares', tFactoryReset: 'Restablecer de fábrica', tEartips: 'Almohadillas y ganchos', tHost: 'Controles del anfitrión', tMember: 'Controles del miembro', tPhone: 'App móvil', tComputer: 'App de escritorio', tMicNotes: 'Consejos del micrófono', tLangSwitch: 'Cambio de idioma', tMeetingSettings: 'Anfitrión: ajustes de reunión', tKeySettings: 'Anfitrión: ajustes clave' },
+  ja: { tabVideo: '操作動画', tabManual: '取扱説明書', directory: '動画一覧', manualEmpty: 'コンテンツなし', helpCenter: 'ヘルプセンター', langSelect: '言語', chapters: 'チャプター', chapterList: 'チャプター一覧', videoOverview: '使い方まとめ', videoGroupMeeting: '多人数会議', videoTwoPerson: '2人対話', videoListen: '傍聴翻訳', videoHandheld: '手持ち翻訳', videoCall: '通話・ビデオ翻訳', videoOther: 'その他', tUnbox: '開封', tActivate: 'アクティベーション', tOffline: 'オフライン翻訳', tSpeed: '翻訳速度の調整', tExportMinutes: '議事録のエクスポート', tUploadLogs: 'ログのアップロード', tSystemUpdate: 'システムとイヤホンの更新', tFactoryReset: '工場出荷状態にリセット', tEartips: 'イヤーピースとイヤーフック', tHost: 'ホスト側の操作', tMember: 'メンバー側の操作', tPhone: 'スマホでの操作', tComputer: 'パソコンでの操作', tMicNotes: 'イヤホンの集音の注意点', tLangSwitch: '言語の切り替え', tMeetingSettings: 'ホスト：会議設定', tKeySettings: 'ホスト：主要設定スイッチ' },
+  de: { tabVideo: 'Bedienungsvideo', tabManual: 'Bedienungsanleitung', directory: 'Videoliste', manualEmpty: 'Kein Inhalt', helpCenter: 'Hilfe-Center', langSelect: 'Sprache', chapters: 'Kapitel', chapterList: 'Kapitelliste', videoOverview: 'Tutorial-Übersicht', videoGroupMeeting: 'Gruppenbesprechung', videoTwoPerson: 'Gespräch zu zweit', videoListen: 'Zuhörübersetzung', videoHandheld: 'Handübersetzung', videoCall: 'Anruf- & Videoübersetzung', videoOther: 'Sonstiges', tUnbox: 'Auspacken', tActivate: 'Aktivierung', tOffline: 'Offline-Übersetzung', tSpeed: 'Übersetzungsgeschwindigkeit', tExportMinutes: 'Protokoll exportieren', tUploadLogs: 'Logs hochladen', tSystemUpdate: 'System- & Ohrhörer-Update', tFactoryReset: 'Werkseinstellungen', tEartips: 'Ohrstöpsel und Ohrbügel', tHost: 'Bedienung als Host', tMember: 'Bedienung als Teilnehmer', tPhone: 'Smartphone-App', tComputer: 'Desktop-App', tMicNotes: 'Hinweise zur Mikrofonaufnahme', tLangSwitch: 'Sprachwechsel', tMeetingSettings: 'Host: Besprechungseinstellungen', tKeySettings: 'Host: Wichtige Einstellungen' },
+  fr: { tabVideo: "Vidéos d'utilisation", tabManual: "Manuel d'utilisation", directory: 'Liste des vidéos', manualEmpty: 'Aucun contenu', helpCenter: "Centre d'aide", langSelect: 'Langue', chapters: 'Chapitres', chapterList: 'Liste des chapitres', videoOverview: 'Aperçu des tutoriels', videoGroupMeeting: 'Réunion de groupe', videoTwoPerson: 'Conversation à deux', videoListen: 'Traduction en écoute', videoHandheld: 'Traduction à la main', videoCall: 'Traduction en appel', videoOther: 'Autres', tUnbox: 'Déballage', tActivate: 'Activation', tOffline: 'Traduction hors ligne', tSpeed: 'Vitesse de traduction', tExportMinutes: 'Exporter le compte rendu', tUploadLogs: 'Envoyer les journaux', tSystemUpdate: 'Mise à jour du système et des écouteurs', tFactoryReset: "Réinitialisation d'usine", tEartips: 'Embouts et crochets', tHost: "Contrôles de l'hôte", tMember: 'Contrôles du membre', tPhone: 'App mobile', tComputer: 'App de bureau', tMicNotes: 'Conseils micro', tLangSwitch: 'Changement de langue', tMeetingSettings: 'Hôte : paramètres de réunion', tKeySettings: 'Hôte : paramètres clés' },
+  ko: { tabVideo: '사용 영상', tabManual: '사용 설명서', directory: '영상 목록', manualEmpty: '내용 없음', helpCenter: '고객센터', langSelect: '언어', chapters: '챕터', chapterList: '챕터 목록', videoOverview: '사용법 요약', videoGroupMeeting: '다자간 회의', videoTwoPerson: '2인 대화', videoListen: '방청 번역', videoHandheld: '핸드헬드 번역', videoCall: '통화·영상 번역', videoOther: '기타', tUnbox: '개봉', tActivate: '활성화', tOffline: '오프라인 번역', tSpeed: '번역 속도 조절', tExportMinutes: '회의록 내보내기', tUploadLogs: '로그 업로드', tSystemUpdate: '시스템 및 이어버드 업데이트', tFactoryReset: '공장 초기화', tEartips: '이어팁과 이어훅', tHost: '호스트 조작', tMember: '멤버 조작', tPhone: '휴대폰 조작', tComputer: '컴퓨터 조작', tMicNotes: '이어버드 수음 주의사항', tLangSwitch: '언어 전환 안내', tMeetingSettings: '호스트: 회의 설정', tKeySettings: '호스트: 주요 설정' },
+  th: { tabVideo: 'วิดีโอการใช้งาน', tabManual: 'คู่มือการใช้งาน', directory: 'รายการวิดีโอ', manualEmpty: 'ไม่มีเนื้อหา', helpCenter: 'ศูนย์ช่วยเหลือ', langSelect: 'ภาษา', chapters: 'บท', chapterList: 'รายการบท', videoOverview: 'สรุปวิธีใช้', videoGroupMeeting: 'ประชุมหลายคน', videoTwoPerson: 'สนทนาสองคน', videoListen: 'ฟังและแปล', videoHandheld: 'แปลแบบถือมือ', videoCall: 'แปลโทร/วิดีโอ', videoOther: 'อื่นๆ', tUnbox: 'แกะกล่อง', tActivate: 'เปิดใช้งาน', tOffline: 'แปลออฟไลน์', tSpeed: 'ปรับความเร็วการแปล', tExportMinutes: 'ส่งออกรายงานการประชุม', tUploadLogs: 'อัปโหลดบันทึก', tSystemUpdate: 'อัปเดตระบบและหูฟัง', tFactoryReset: 'รีเซ็ตเป็นค่าโรงงาน', tEartips: 'จุกหูฟังและขอเกี่ยวหู', tHost: 'การใช้งานฝั่งผู้จัด', tMember: 'การใช้งานฝั่งสมาชิก', tPhone: 'การใช้งานบนมือถือ', tComputer: 'การใช้งานบนคอมพิวเตอร์', tMicNotes: 'ข้อควรระวังเรื่องรับเสียง', tLangSwitch: 'วิธีสลับภาษา', tMeetingSettings: 'ผู้จัด: การตั้งค่าประชุม', tKeySettings: 'ผู้จัด: การตั้งค่าสำคัญ' },
+  ru: { tabVideo: 'Видеоинструкции', tabManual: 'Руководство пользователя', directory: 'Список видео', manualEmpty: 'Пока нет контента', helpCenter: 'Центр помощи', langSelect: 'Язык', chapters: 'Разделы', chapterList: 'Список разделов', videoOverview: 'Обзор инструкций', videoGroupMeeting: 'Групповая встреча', videoTwoPerson: 'Разговор вдвоём', videoListen: 'Перевод на слух', videoHandheld: 'Перевод в руках', videoCall: 'Перевод звонков и видео', videoOther: 'Другое', tUnbox: 'Распаковка', tActivate: 'Активация', tOffline: 'Офлайн-перевод', tSpeed: 'Скорость перевода', tExportMinutes: 'Экспорт протокола встречи', tUploadLogs: 'Загрузка журналов', tSystemUpdate: 'Обновление системы и наушников', tFactoryReset: 'Сброс к заводским настройкам', tEartips: 'Амбушюры и заушники', tHost: 'Действия ведущего', tMember: 'Действия участника', tPhone: 'Приложение на телефоне', tComputer: 'Приложение на компьютере', tMicNotes: 'Рекомендации по микрофону', tLangSwitch: 'Переключение языка', tMeetingSettings: 'Ведущий: настройки встречи', tKeySettings: 'Ведущий: ключевые настройки' },
+  'zh-TW': { tabVideo: '操作影片', tabManual: '使用手冊', directory: '影片目錄', manualEmpty: '暫無內容', helpCenter: '幫助中心', langSelect: '語言選擇', chapters: '章節', chapterList: '章節目錄', videoOverview: '使用教學彙總', videoGroupMeeting: '多人會議模式', videoTwoPerson: '雙人對話模式', videoListen: '旁聽翻譯模式', videoHandheld: '手持翻譯模式', videoCall: '通話/視訊翻譯模式', videoOther: '其他', tUnbox: '開箱', tActivate: '啟用', tOffline: '離線翻譯模式', tSpeed: '翻譯速度調整', tExportMinutes: '匯出會議紀錄', tUploadLogs: '上傳日誌', tSystemUpdate: '系統與耳機更新', tFactoryReset: '恢復原廠設定', tEartips: '耳套與耳掛', tHost: '主持人端操作', tMember: '成員端操作', tPhone: '手機端操作', tComputer: '電腦端操作', tMicNotes: '耳機收音注意事項', tLangSwitch: '語系切換說明', tMeetingSettings: '主持人-會議設定說明', tKeySettings: '主持人-關鍵設定開關說明' },
+  tr: { tabVideo: 'Kullanım Videoları', tabManual: 'Kullanım Kılavuzu', directory: 'Video Listesi', manualEmpty: 'Henüz içerik yok', helpCenter: 'Yardım Merkezi', langSelect: 'Dil', chapters: 'Bölümler', chapterList: 'Bölüm Listesi', videoOverview: 'Kullanım Özeti', videoGroupMeeting: 'Çok Kişili Toplantı', videoTwoPerson: 'İki Kişilik Görüşme', videoListen: 'Dinleyerek Çeviri', videoHandheld: 'Elde Çeviri', videoCall: 'Arama ve Video Çevirisi', videoOther: 'Diğer', tUnbox: 'Kutudan Çıkarma', tActivate: 'Etkinleştirme', tOffline: 'Çevrimdışı Çeviri', tSpeed: 'Çeviri Hızı', tExportMinutes: 'Toplantı Tutanağını Dışa Aktar', tUploadLogs: 'Günlükleri Yükle', tSystemUpdate: 'Sistem ve Kulaklık Güncellemesi', tFactoryReset: 'Fabrika Ayarlarına Sıfırla', tEartips: 'Kulak Uçları ve Kulak Kancaları', tHost: 'Moderatör İşlemleri', tMember: 'Üye İşlemleri', tPhone: 'Telefon Uygulaması', tComputer: 'Bilgisayar Uygulaması', tMicNotes: 'Kulaklık Mikrofonu İpuçları', tLangSwitch: 'Dil Değiştirme', tMeetingSettings: 'Moderatör: Toplantı Ayarları', tKeySettings: 'Moderatör: Önemli Ayarlar' },
+  uk: { tabVideo: 'Відеоінструкції', tabManual: 'Посібник користувача', directory: 'Список відео', manualEmpty: 'Поки немає контенту', helpCenter: 'Центр допомоги', langSelect: 'Мова', chapters: 'Розділи', chapterList: 'Список розділів', videoOverview: 'Огляд інструкцій', videoGroupMeeting: 'Групова нарада', videoTwoPerson: 'Розмова вдвох', videoListen: 'Переклад на слух', videoHandheld: 'Переклад у руках', videoCall: 'Переклад дзвінків і відео', videoOther: 'Інше', tUnbox: 'Розпакування', tActivate: 'Активація', tOffline: 'Офлайн-переклад', tSpeed: 'Швидкість перекладу', tExportMinutes: 'Експорт протоколу зустрічі', tUploadLogs: 'Завантаження журналів', tSystemUpdate: 'Оновлення системи та навушників', tFactoryReset: 'Скидання до заводських налаштувань', tEartips: 'Амбушури та завушні гачки', tHost: 'Дії ведучого', tMember: 'Дії учасника', tPhone: 'Застосунок на телефоні', tComputer: "Застосунок на комп'ютері", tMicNotes: 'Поради щодо мікрофона', tLangSwitch: 'Перемикання мови', tMeetingSettings: 'Ведучий: налаштування зустрічі', tKeySettings: 'Ведучий: ключові налаштування' },
+}
+
+const getDefaultLang = (): string => {
+  const lang = navigator.language || 'en'
+  if (messages[lang]) return lang
+  const prefix = lang.split('-')[0]
+  if (messages[prefix]) return prefix
+  return 'zh'
+}
+
+const currentLang = ref<string>(getDefaultLang())
+const t = computed<Messages>(() => messages[currentLang.value] ?? messages.zh)
+
+const videoMeta: VideoMeta[] = [
+  { id: 1, titleKey: 'videoOverview', icon: iconLight, url: videoUrl, duration: '11:04' },
+  { id: 2, titleKey: 'videoGroupMeeting', icon: iconGroup, url: groupMeetingUrl, duration: '5:06' },
+  { id: 3, titleKey: 'videoTwoPerson', icon: iconConversion, url: twoPersonConversationUrl, duration: '0:42' },
+  { id: 4, titleKey: 'videoListen', icon: iconListen, url: audienceTranslationUrl, duration: '0:41' },
+  { id: 5, titleKey: 'videoHandheld', icon: iconAsk, url: holdInHandUrl, duration: '0:20' },
+  { id: 6, titleKey: 'videoCall', icon: iconVideo, url: callVideoUrl, duration: '0:44' },
+  { id: 7, titleKey: 'videoOther', icon: iconOther, url: otherUrl, duration: '3:17' },
+]
+
+const videos = computed<VideoItem[]>(() =>
+  videoMeta.map((m) => ({
+    id: m.id,
+    title: t.value[m.titleKey],
+    icon: m.icon,
+    url: m.url,
+    duration: m.duration,
+  }))
+)
+
+// 时间线章节（mm:ss 已转换为秒数），按视频 id 分组，label 通过 key 本地化。
+const timelineMeta: Record<number, TimelineMetaItem[]> = {
+  1: [
+    { seconds: 3, key: 'tUnbox' },
+    { seconds: 20, key: 'tActivate' },
+    { seconds: 88, key: 'videoGroupMeeting' },
+    { seconds: 394, key: 'videoTwoPerson' },
+    { seconds: 436, key: 'videoListen' },
+    { seconds: 478, key: 'videoCall' },
+    { seconds: 522, key: 'videoHandheld' },
+    { seconds: 542, key: 'tOffline' },
+    { seconds: 561, key: 'tSpeed' },
+    { seconds: 570, key: 'tExportMinutes' },
+    { seconds: 603, key: 'tUploadLogs' },
+    { seconds: 617, key: 'tSystemUpdate' },
+    { seconds: 628, key: 'tFactoryReset' },
+    { seconds: 645, key: 'tEartips' },
+  ],
+  2: [
+    { seconds: 0, key: 'videoGroupMeeting' },
+    { seconds: 8, key: 'tHost' },
+    { seconds: 84, key: 'tMember' },
+    { seconds: 138, key: 'tPhone' },
+    { seconds: 189, key: 'tComputer' },
+    { seconds: 231, key: 'tMicNotes' },
+    { seconds: 255, key: 'tLangSwitch' },
+    { seconds: 271, key: 'tMeetingSettings' },
+    { seconds: 288, key: 'tKeySettings' },
+  ],
+}
+
+const activeTab = ref<TabKey>('video')
+const currentVideoId = ref<number>(videoMeta[0].id)
+
+const videoRef = ref<HTMLVideoElement | null>(null)
+const videoPlayerRef = ref<HTMLDivElement | null>(null)
+const progressRef = ref<HTMLDivElement | null>(null)
+const playing = ref(false)
+const buffering = ref(false)
+const isHovering = ref(false)
+const shouldAutoplay = ref(false)
+const currentTime = ref(0)
+const duration = ref(0)
+const speed = ref('1.0x')
+const speedMenuOpen = ref(false)
+const speeds = ['0.75x', '1.0x', '1.25x', '1.5x', '2.0x']
+const fullscreen = ref(false)
+const fsChaptersOpen = ref(false)
+const fsProgressRef = ref<HTMLDivElement | null>(null)
+const drawerOpen = ref(false)
+const drawerTop = ref(0)
+const langDrawerOpen = ref(false)
+const langDropdownVisible = ref(false)
+const isSmallScreen = ref(window.matchMedia('(max-width: 768px)').matches)
+// 当前章节按播放进度动态计算，播放跨越章节边界时标题/高亮随之切换
+const activeTimelineIndex = computed(() => {
+  const list = timeline.value
+  let idx = -1
+  for (let i = 0; i < list.length; i++) {
+    if (currentTime.value >= list[i].seconds) idx = i
+    else break
+  }
+  return idx
+})
+
+const langLabel = computed(() => languages.find((l) => l.code === currentLang.value)?.label ?? currentLang.value)
+const currentVideo = computed(() => videos.value.find((v) => v.id === currentVideoId.value) ?? videos.value[0])
+const timeline = computed<TimelineItem[]>(() =>
+  (timelineMeta[currentVideoId.value] ?? []).map((it) => ({ seconds: it.seconds, label: t.value[it.key] }))
+)
+const progress = computed(() => (duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0))
+const activeTimelineLabel = computed(() => {
+  if (activeTimelineIndex.value < 0) return ''
+  return timeline.value[activeTimelineIndex.value]?.label ?? ''
+})
+const speedShort = computed(() => speed.value.replace(/\.0x$/, 'x'))
+
+function switchTab(tab: TabKey) {
+  activeTab.value = tab
+  drawerOpen.value = false
+}
+
+function onLangChange(code: string) {
+  currentLang.value = code
+}
+
+function selectVideo(id: number) {
+  currentVideoId.value = id
+  playing.value = false
+  buffering.value = false
+  currentTime.value = 0
+  duration.value = 0
+  speedMenuOpen.value = false
+  drawerOpen.value = false
+  fsChaptersOpen.value = false
+  shouldAutoplay.value = true
+}
+
+function computeDrawerTop() {
+  const player = videoPlayerRef.value
+  if (player) {
+    drawerTop.value = Math.max(player.getBoundingClientRect().bottom, 0)
+  }
+}
+
+function openDrawer() {
+  computeDrawerTop()
+  drawerOpen.value = true
+}
+
+function closeDrawer() {
+  drawerOpen.value = false
+}
+
+function openLangDrawer() {
+  computeDrawerTop()
+  langDrawerOpen.value = true
+}
+
+function closeLangDrawer() {
+  langDrawerOpen.value = false
+}
+
+function onLangDropdownVisible(visible: boolean) {
+  langDropdownVisible.value = visible
+}
+
+function selectLang(code: string) {
+  currentLang.value = code
+  langDrawerOpen.value = false
+}
+
+async function togglePlay() {
+  const v = videoRef.value
+  if (!v) return
+  if (v.paused) {
+    v.playbackRate = parseFloat(speed.value)
+    try {
+      await v.play()
+    } catch (e) {
+      console.warn('视频播放失败:', e)
+    }
+  } else {
+    v.pause()
+  }
+}
+
+function playAt(index: number) {
+  const item = timeline.value[index]
+  if (!item) return
+  const v = videoRef.value
+  if (!v) return
+  v.currentTime = item.seconds
+  currentTime.value = item.seconds
+  v.playbackRate = parseFloat(speed.value)
+  v.play().catch((e) => console.warn('视频播放失败:', e))
+}
+
+async function toggleFullscreen() {
+  const el = videoPlayerRef.value
+  if (!el) return
+
+  // 退出全屏
+  if (document.fullscreenElement) {
+    fsChaptersOpen.value = false
+    try {
+      await document.exitFullscreen()
+    } catch (e) {
+      console.warn('退出全屏失败:', e)
+    }
+    return
+  }
+
+  // 标准 Fullscreen API（桌面端 / 多数 Android 浏览器）
+  if (typeof el.requestFullscreen === 'function') {
+    try {
+      await el.requestFullscreen()
+    } catch (e) {
+      console.warn('进入全屏失败:', e)
+    }
+    return
+  }
+
+  // iOS Safari：元素不支持 requestFullscreen，回退到 <video> 原生全屏
+  const v = videoRef.value as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
+  if (v && typeof v.webkitEnterFullscreen === 'function') {
+    try {
+      v.webkitEnterFullscreen()
+    } catch (e) {
+      console.warn('进入全屏失败:', e)
+    }
+    return
+  }
+
+  console.warn('当前浏览器不支持全屏')
+}
+
+function onFullscreenChange() {
+  fullscreen.value = !!document.fullscreenElement
+  if (!fullscreen.value) {
+    fsChaptersOpen.value = false
+    speedMenuOpen.value = false
+  }
+}
+
+function onTimeUpdate() {
+  if (videoRef.value) currentTime.value = videoRef.value.currentTime
+}
+
+function onLoadedMetadata() {
+  if (videoRef.value) duration.value = videoRef.value.duration
+  if (shouldAutoplay.value) {
+    shouldAutoplay.value = false
+    const v = videoRef.value
+    if (v) {
+      v.playbackRate = parseFloat(speed.value)
+      v.play().catch((e) => console.warn('自动播放失败:', e))
+    }
+  }
+}
+
+function onSeek(e: MouseEvent) {
+  const bar = progressRef.value
+  const v = videoRef.value
+  if (!bar || !v || !duration.value) return
+  const rect = bar.getBoundingClientRect()
+  const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1)
+  v.currentTime = ratio * duration.value
+  currentTime.value = v.currentTime
+}
+
+function onFsSeek(e: MouseEvent) {
+  const bar = fsProgressRef.value
+  const v = videoRef.value
+  if (!bar || !v || !duration.value) return
+  const rect = bar.getBoundingClientRect()
+  const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1)
+  v.currentTime = ratio * duration.value
+  currentTime.value = v.currentTime
+}
+
+function toggleFsChapters() {
+  fsChaptersOpen.value = !fsChaptersOpen.value
+}
+
+function playFsChapter(index: number) {
+  playAt(index)
+  fsChaptersOpen.value = false
+}
+
+function toggleSpeedMenu() {
+  speedMenuOpen.value = !speedMenuOpen.value
+}
+
+function setSpeed(s: string) {
+  speed.value = s
+  if (videoRef.value) videoRef.value.playbackRate = parseFloat(s)
+  speedMenuOpen.value = false
+}
+
+function formatTime(sec: number): string {
+  if (!isFinite(sec) || sec < 0) sec = 0
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function formatClock(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+watch([drawerOpen, langDrawerOpen], ([drawer, lang]) => {
+  document.body.style.overflow = drawer || lang ? 'hidden' : ''
+})
+
+function onWindowResize() {
+  isSmallScreen.value = window.matchMedia('(max-width: 768px)').matches
+  if (!isSmallScreen.value) {
+    langDrawerOpen.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+  window.addEventListener('resize', onWindowResize)
+  // 小屏进入页面默认展开目录弹窗（对应设计稿「默认进入页」）
+  if (window.matchMedia('(max-width: 768px)').matches) {
+    openDrawer()
+  }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  window.removeEventListener('resize', onWindowResize)
+  document.body.style.overflow = ''
+})
+</script>
+
+<style scoped>
+.tutorial {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: #ffffff;
+  color: #1e1e1e;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------- 顶部栏 ---------- */
+.tutorial-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  padding: 0 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 0 #f0f0f0;
+  flex-shrink: 0;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  background: #F2F4F7;
+  border-radius: 999px;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 15px;
+  line-height: 1;
+  color: #606060;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, color 0.2s;
+}
+
+.tab.active {
+  color: #0A85FF;
+  font-weight: 500;
+  background: #ffffff;
+}
+
+.lang-wrap {
+  position: absolute;
+  right: 12px;
+  display: flex;
+}
+
+.lang-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #606060;
+  cursor: pointer;
+  outline: none;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.lang-label {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lang-caret {
+  color: #989898;
+}
+
+.lang-trigger.active {
+  color: #0A85FF;
+}
+
+.lang-trigger.active .lang-caret {
+  color: #0A85FF;
+}
+
+/* ---------- 视频播放器 ---------- */
+.video-tab {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.video-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.video-player {
+  position: relative;
+  flex-shrink: 0;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #d9d9d9;
+}
+
+.video-player:fullscreen {
+  max-width: none;
+  aspect-ratio: auto;
+  background: #000000;
+}
+
+.video-el {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: #d9d9d9;
+}
+
+.video-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.play-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border: none;
+  border-radius: 50%;
+  background: #989898;
+  color: #ffffff;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.2s;
+}
+
+.play-btn:hover {
+  background: #0A85FF;
+}
+
+.play-btn:active {
+  transform: scale(0.95);
+}
+
+.video-buffering {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.buffering-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #0A85FF;
+  border-radius: 50%;
+  animation: buffering-spin 0.8s linear infinite;
+}
+
+@keyframes buffering-spin {
+  to { transform: rotate(360deg); }
+}
+
+.video-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 10px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #ffffff;
+  transition: opacity 0.25s;
+}
+
+.video-controls.controls-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.progress {
+  flex: 1;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.progress-track {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+}
+
+.progress-played {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: #0A85FF;
+  border-radius: 2px;
+}
+
+.progress-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.time {
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.speed-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.speed-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.speed-menu {
+  position: absolute;
+  bottom: 34px;
+  right: 0;
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  min-width: 76px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  z-index: 5;
+}
+
+.speed-menu li {
+  padding: 8px 0;
+  font-size: 13px;
+  color: #1e1e1e;
+  text-align: center;
+  cursor: pointer;
+}
+
+.speed-menu li:hover {
+  background: #f5f5f5;
+}
+
+.speed-menu li.active {
+  color: #0A85FF;
+  font-weight: 600;
+}
+
+/* ---------- 全屏 UI ---------- */
+.fs-title {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #ffffff;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  z-index: 5;
+}
+
+.fs-chapters {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 337px;
+  max-width: 45vw;
+  padding: 12px 30px 20px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.75);
+  color: #ffffff;
+  overflow-y: auto;
+  z-index: 8;
+}
+
+.fs-chapters-header {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 24px;
+  margin-bottom: 10px;
+}
+
+.fs-chapters-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fs-chapter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 10px;
+  border: 0.5px solid #ffffff;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.fs-chapter.active {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.fs-chapter-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.fs-chapter-play {
+  width: 12px;
+  height: 12px;
+  color: #ffffff;
+}
+
+.fs-chapter-label {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.fs-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 30px 18px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.35) 60%, transparent);
+  z-index: 6;
+}
+
+.fs-progress {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.fs-progress-track {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+}
+
+.fs-progress-played {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: #0A85FF;
+  border-radius: 2px;
+}
+
+.fs-progress-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.fs-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.fs-time {
+  font-size: 16px;
+  color: #ffffff;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.fs-time-total {
+  color: #aeaeb2;
+}
+
+.fs-chapter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 20px;
+  border-radius: 16px;
+  /* background: rgba(25, 29, 38, 0.6); */
+  font-size: 16px;
+  color: #ffffff;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fs-spacer {
+  flex: 1;
+}
+
+.fs-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 20px;
+  border: 0.5px solid #ffffff;
+  border-radius: 16px;
+  background: transparent;
+  color: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.fs-speed {
+  font-size: 14px;
+}
+
+.fs-speed-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.fs-speed-menu {
+  bottom: 40px;
+  right: 0;
+  z-index: 10;
+}
+
+/* ---------- 章节标题 + 目录按钮 ---------- */
+.chapters-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 0;
+  flex-shrink: 0;
+}
+
+.chapters-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #1e1e1e;
+  word-break: break-word;
+}
+
+.dir-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: 1px solid #e8e8e8;
+  border-radius: 17px;
+  background: #ffffff;
+  color: #606060;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dir-btn:active {
+  background: #f5f5f5;
+}
+
+/* ---------- 时间线 ---------- */
+.timeline {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 8px 16px 24px 30px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.timeline-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+/* 竖向连接线：每项画一段，随内容整体延伸；首项从圆点起、末项到圆点止 */
+.timeline-item::after {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #ececec;
+  z-index: 0;
+}
+
+.timeline-item:first-child::after {
+  top: 50%;
+}
+
+.timeline-item:last-child::after {
+  bottom: 50%;
+}
+
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -13px;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #D1DDF0;
+  z-index: 1;
+}
+
+@media (hover: hover) {
+  .timeline-item:hover {
+    background: #ECF2FD;
+  }
+}
+
+.timeline-item.active {
+  background: #ECF2FD;
+}
+
+.timeline-item.active .timeline-chip {
+  border: 1px solid #0A85FF;
+  background: #ffffff;
+}
+
+.timeline-item.active .timeline-play,
+.timeline-item.active .timeline-time {
+  color: #0A85FF;
+}
+
+.timeline-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: none;
+  background: #eef2fd;
+  border-radius: 999px;
+  color: #EEF2FD;
+  flex-shrink: 0;
+}
+
+.timeline-play {
+  display: block;
+  width: 14px;
+  height: 14px;
+  color: #8C8C8C;
+  flex-shrink: 0;
+}
+
+.timeline-time {
+  font-size: 13px;
+  color: #8C8C8C;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: #1e1e1e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- 目录抽屉 ---------- */
+.drawer-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 100;
+}
+
+.drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 101;
+  max-width: 640px;
+  margin: 0 auto;
+  background: #ffffff;
+  border-radius: 12px 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 0px;
+  flex-shrink: 0;
+}
+
+.drawer-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e1e1e;
+}
+
+.drawer-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #606060;
+  cursor: pointer;
+}
+
+.drawer-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 20px 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------- 目录项 ---------- */
+.catalog-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin:10px 0px;
+}
+
+.catalog-item::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 1px;
+  /* margin: 6px 0; */
+  background: #E3EBF8;
+}
+
+.catalog-item:hover {
+  background: #f8fafd;
+}
+
+.catalog-item.active {
+  background: #edf2fc;
+}
+
+.item-icon {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-title {
+  margin: 0;
+  font-size: 14px;
+  color: #1e1e1e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-item.active .item-title {
+  font-weight: 600;
+}
+
+/* ---------- 语言抽屉 ---------- */
+.lang-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 16px 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.lang-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 7px;
+  border-bottom: 1px solid #e3ebf8;
+  cursor: pointer;
+  flex-shrink: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.lang-item:last-child {
+  border-bottom: none;
+}
+
+.lang-item.active {
+  background: #ecf2fd;
+}
+
+.lang-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.lang-item-name {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #191d26;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lang-item-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.3;
+  color: #a1a7b2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lang-check {
+  color: #0a85ff;
+  flex-shrink: 0;
+}
+
+/* ---------- 目录侧边栏（桌面端） ---------- */
+.video-sidebar {
+  display: none;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e1e1e;
+}
+
+.sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ---------- 使用手册（内嵌 PDF） ---------- */
+.manual-tab {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.manual-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #c0c0c0;
+}
+
+.manual-empty-icon {
+  opacity: 0.6;
+}
+
+.manual-empty p {
+  margin: 0;
+  font-size: 14px;
+  color: #989898;
+}
+
+/* ---------- 抽屉过渡 ---------- */
+.mask-fade-enter-active,
+.mask-fade-leave-active {
+  transition: opacity 0.25s;
+}
+
+.mask-fade-enter-from,
+.mask-fade-leave-to {
+  opacity: 0;
+}
+
+.drawer-slide-enter-active,
+.drawer-slide-leave-active {
+  transition: transform 0.28s ease;
+}
+
+.drawer-slide-enter-from,
+.drawer-slide-leave-to {
+  transform: translateY(100%);
+}
+
+/* ---------- 桌面端专用元素（移动端默认隐藏） ---------- */
+.header-brand,
+.lang-icon {
+  display: none;
+}
+
+/* ---------- 宽屏布局（> 768px）：目录变为右侧菜单栏，按设计还原 ---------- */
+@media (min-width: 769px) {
+  /* 顶栏：更高 + 品牌区 + 阴影 */
+  .tutorial-header {
+    height: 56px;
+    padding: 0 23px;
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+  }
+
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: absolute;
+    left: 23px;
+  }
+
+  .header-logo {
+    display: block;
+    height: 18px;
+    width: auto;
+  }
+
+  .header-divider {
+    width: 1px;
+    height: 14px;
+    background: #dbdee4;
+  }
+
+  .header-help {
+    font-size: 14px;
+    color: #000000;
+    white-space: nowrap;
+  }
+
+  .lang-wrap {
+    right: 23px;
+  }
+
+  .lang-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+  }
+
+  /* 顶栏 tab：去掉胶囊背景，改用下边框高亮选中项 */
+  .tabs {
+    background: transparent;
+    padding: 0;
+    gap: 8px;
+  }
+
+  .tab {
+    padding: 5px 18px;
+    color: #1e1e1e;
+    border-radius: 0;
+    border-bottom: 2px solid transparent;
+  }
+
+  /* 激活 tab：蓝色下边框 */
+  .tab.active {
+    background: transparent;
+    border-bottom-color: #0A85FF;
+  }
+
+  /* 主体宽度 */
+  .video-tab {
+    flex-direction: row;
+    max-width: 1160px;
+    margin-top: 20px;
+  }
+
+  .chapters-title {
+    font-size: 30px;
+    font-weight: 600;
+  }
+
+  /* 时间线：胶囊改为填充式 */
+  .timeline-chip {
+    border: none;
+    background: #eef2fd;
+  }
+
+  .timeline-item.active .timeline-chip {
+    border-color: transparent;
+    background: #0a85ff;
+  }
+
+  .timeline-item.active .timeline-play,
+  .timeline-item.active .timeline-time {
+    color: #ffffff;
+  }
+
+  /* 目录侧栏：灰底浮层卡片 */
+  .video-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 370px;
+    flex-shrink: 0;
+    min-height: 0;
+    margin: 0px 16px 16px 0;
+    border: none;
+    border-radius: 7px;
+    background: #f7f9fb;
+    overflow: hidden;
+  }
+
+  .sidebar-header {
+    height: 55px;
+    gap: 10px;
+    padding: 0 20px;
+    border-bottom: 1px solid #eceef3;
+  }
+
+  .sidebar-header-icon {
+    display: block;
+    width: 18px;
+    height: 18px;
+  }
+
+  .sidebar-title {
+    font-size: 20px;
+    font-weight: 500;
+  }
+
+  .sidebar-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .video-sidebar .catalog-item {
+    align-items: flex-start;
+    gap: 14px;
+    padding: 5px 20px;
+    border-radius: 7px;
+  }
+
+  .video-sidebar .catalog-item::after {
+    display: none;
+  }
+
+  .video-sidebar .catalog-item.active {
+    background: #ffffff;
+  }
+
+  .video-sidebar .item-title {
+    font-size: 16px;
+    font-weight: 500;
+  }
+
+  .video-sidebar .item-duration {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: #626773;
+    white-space: nowrap;
+  }
+
+  .video-sidebar .catalog-item.active .item-title,
+  .video-sidebar .catalog-item.active .item-duration {
+    color: #0a85ff;
+  }
+
+  /* 激活项时长旁“正在播放”音量条 */
+  .item-eq {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 10px;
+    flex-shrink: 0;
+  }
+
+  .item-eq i {
+    display: block;
+    width: 2px;
+    border-radius: 1px;
+    background: #0a85ff;
+    transform-origin: bottom;
+    animation: item-eq-bounce 0.9s ease-in-out infinite;
+  }
+
+  .item-eq i:nth-child(1) { height: 10px; animation-delay: 0s; }
+  .item-eq i:nth-child(2) { height: 5px; animation-delay: 0.15s; }
+  .item-eq i:nth-child(3) { height: 8px; animation-delay: 0.3s; }
+
+  @keyframes item-eq-bounce {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(0.35); }
+  }
+
+  .dir-btn {
+    display: none;
+  }
+}
+</style>

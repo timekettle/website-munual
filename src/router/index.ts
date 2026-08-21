@@ -5,8 +5,9 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'pdf-viewer',
-      component: () => import('../views/PdfViewer.vue'),
+      alias: '/tutorial',
+      name: 'tutorial',
+      component: () => import('../views/Tutorial.vue'),
     },
     {
       path: '/x1m',
