@@ -66,7 +66,7 @@
     <main v-if="activeTab === 'video'" class="video-tab">
       <div class="video-main">
       <!-- 视频播放器（自定义控制条：无音量，含倍速与全屏） -->
-      <div class="video-player" ref="videoPlayerRef" @mouseenter="isHovering = true" @mouseleave="isHovering = false">
+      <div class="video-player" :class="{ 'css-fullscreen': cssFullscreen }" ref="videoPlayerRef" @mouseenter="isHovering = true" @mouseleave="isHovering = false">
         <video
           ref="videoRef"
           class="video-el"
@@ -92,7 +92,7 @@
         </div>
 
         <!-- 中央播放按钮（未播放时） -->
-        <div v-if="!playing" class="video-placeholder" @click="togglePlay">
+        <div v-if="!playing" class="video-placeholder" :class="{ 'is-fullscreen': fullscreen }" @click="togglePlay">
           <button type="button" class="play-btn" aria-label="play">
             <svg viewBox="0 0 24 24" width="34" height="34">
               <path d="M8 5v14l11-7z" fill="currentColor" />
@@ -155,8 +155,16 @@
           </button>
         </div>
 
-        <!-- 全屏专属 UI：标题 + 章节抽屉 + 底部控制条 -->
-        <div v-if="fullscreen" class="fs-title">{{ currentVideo.title }}</div>
+        <!-- 全屏专属 UI：顶部（章节徽章 + 返回）、章节抽屉、底部控制条 -->
+        <div v-if="fullscreen" class="fs-top">
+          <button type="button" class="fs-exit" aria-label="exit fullscreen" @click="toggleFullscreen">
+            <svg viewBox="0 0 24 24" width="28" height="28">
+              <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div v-if="fullscreen && fsChaptersOpen" class="fs-chapters-mask" @click="toggleFsChapters"></div>
 
         <aside v-if="fullscreen && fsChaptersOpen" class="fs-chapters" @click.stop>
           <div class="fs-chapters-header">{{ t.chapterList }}</div>
@@ -187,11 +195,11 @@
             </div>
           </div>
           <div class="fs-controls-row">
-            <button type="button" class="fs-btn" :aria-label="playing ? 'pause' : 'play'" @click="togglePlay">
-              <svg v-if="playing" viewBox="0 0 24 24" width="24" height="24">
+            <button type="button" class="fs-btn fs-btn-play" :aria-label="playing ? 'pause' : 'play'" @click="togglePlay">
+              <svg v-if="playing" viewBox="0 0 24 24" width="26" height="26">
                 <path d="M6 5h4v14H6zM14 5h4v14h-4z" fill="currentColor" />
               </svg>
-              <svg v-else viewBox="0 0 24 24" width="24" height="24">
+              <svg v-else viewBox="0 0 24 24" width="26" height="26">
                 <path d="M8 5v14l11-7z" fill="currentColor" />
               </svg>
             </button>
@@ -214,14 +222,6 @@
                 </li>
               </ul>
             </div>
-            <button type="button" class="fs-btn" aria-label="exit fullscreen" @click="toggleFullscreen">
-              <svg viewBox="0 0 24 24" width="24" height="24">
-                <path d="M8 3v3a2 2 0 0 1-2 2H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                <path d="M16 3v3a2 2 0 0 0 2 2h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                <path d="M8 21v-3a2 2 0 0 0-2-2H3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                <path d="M16 21v-3a2 2 0 0 1 2-2h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </button>
           </div>
         </div>
       </div>
@@ -554,6 +554,8 @@ const speed = ref('1.0x')
 const speedMenuOpen = ref(false)
 const speeds = ['0.75x', '1.0x', '1.25x', '1.5x', '2.0x']
 const fullscreen = ref(false)
+// iOS / 部分内置浏览器不支持元素级 requestFullscreen，改用 CSS 假全屏（自定义 UI + 横屏旋转）
+const cssFullscreen = ref(false)
 const fsChaptersOpen = ref(false)
 const fsProgressRef = ref<HTMLDivElement | null>(null)
 const drawerOpen = ref(false)
@@ -669,13 +671,18 @@ async function toggleFullscreen() {
   const el = videoPlayerRef.value
   if (!el) return
 
-  // 退出全屏
-  if (document.fullscreenElement) {
+  // 退出全屏（原生或 CSS 假全屏）
+  if (fullscreen.value) {
     fsChaptersOpen.value = false
-    try {
-      await document.exitFullscreen()
-    } catch (e) {
-      console.warn('退出全屏失败:', e)
+    speedMenuOpen.value = false
+    if (cssFullscreen.value) {
+      exitCssFullscreen()
+    } else if (document.fullscreenElement) {
+      try {
+        await document.exitFullscreen()
+      } catch (e) {
+        console.warn('退出全屏失败:', e)
+      }
     }
     return
   }
@@ -684,31 +691,69 @@ async function toggleFullscreen() {
   if (typeof el.requestFullscreen === 'function') {
     try {
       await el.requestFullscreen()
+      // 进入全屏后锁定横屏，小屏默认横向展示
+      await lockLandscape()
     } catch (e) {
       console.warn('进入全屏失败:', e)
     }
     return
   }
 
-  // iOS Safari：元素不支持 requestFullscreen，回退到 <video> 原生全屏
-  const v = videoRef.value as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
-  if (v && typeof v.webkitEnterFullscreen === 'function') {
-    try {
-      v.webkitEnterFullscreen()
-    } catch (e) {
-      console.warn('进入全屏失败:', e)
-    }
+  // 小屏（iOS / 部分内置浏览器）：元素不支持 requestFullscreen，改用 CSS 假全屏。
+  // 不依赖原生全屏，未播放时也能进入，且展示的是自定义 UI 而非系统默认播放器。
+  if (isSmallScreen.value) {
+    enterCssFullscreen()
     return
   }
 
   console.warn('当前浏览器不支持全屏')
 }
 
+// CSS 假全屏：固定铺满视口并旋转 90° 模拟横屏，未播放也能进入、展示自定义控制条
+function enterCssFullscreen() {
+  cssFullscreen.value = true
+  fullscreen.value = true
+}
+
+function exitCssFullscreen() {
+  cssFullscreen.value = false
+  fullscreen.value = false
+}
+
+// 锁定横屏（仅在全屏状态下生效；浏览器不支持时静默忽略）
+async function lockLandscape() {
+  const so = screen.orientation
+  if (!so || typeof so.lock !== 'function') return
+  try {
+    await so.lock('landscape')
+  } catch {
+    try {
+      await so.lock('landscape-primary')
+    } catch (err) {
+      console.warn('锁定横屏失败:', err)
+    }
+  }
+}
+
+function unlockOrientation() {
+  const so = screen.orientation
+  if (so && typeof so.unlock === 'function') {
+    try {
+      so.unlock()
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function onFullscreenChange() {
+  // CSS 假全屏由 enter/exitCssFullscreen 管理状态，不响应原生 fullscreenchange
+  if (cssFullscreen.value) return
   fullscreen.value = !!document.fullscreenElement
   if (!fullscreen.value) {
     fsChaptersOpen.value = false
     speedMenuOpen.value = false
+    unlockOrientation()
   }
 }
 
@@ -935,6 +980,44 @@ onBeforeUnmount(() => {
   background: #000000;
 }
 
+/* CSS 假全屏（iOS / 不支持元素全屏的小屏浏览器）：固定铺满视口并旋转模拟横屏，
+   展示自定义控制条而非系统默认播放器。 */
+.video-player.css-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  max-width: none;
+  aspect-ratio: auto;
+  background: #000000;
+}
+
+/* 横屏：自然铺满，不旋转 */
+@media (orientation: landscape) {
+  .video-player.css-fullscreen {
+    width: 100vw;
+    height: 100vh;
+    width: 100dvw;
+    height: 100dvh;
+  }
+}
+
+/* 竖屏：宽高互换并旋转 90°，旋转后恰好填满竖屏视口 */
+@media (orientation: portrait) {
+  .video-player.css-fullscreen {
+    width: 100vh;
+    height: 100vw;
+    width: 100dvh;
+    height: 100dvw;
+    transform: rotate(90deg) translateY(-100%);
+    transform-origin: top left;
+  }
+}
+
+.video-player.css-fullscreen .video-el {
+  background: #000000;
+}
+
 .video-el {
   width: 100%;
   height: 100%;
@@ -972,6 +1055,18 @@ onBeforeUnmount(() => {
 
 .play-btn:active {
   transform: scale(0.95);
+}
+
+/* 全屏时中央播放按钮放大，按设计稿（半透明圆底 + 大三角） */
+.video-placeholder.is-fullscreen .play-btn {
+  width: 80px;
+  height: 80px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.video-placeholder.is-fullscreen .play-btn svg {
+  width: 46px;
+  height: 46px;
 }
 
 .video-buffering {
@@ -1122,17 +1217,37 @@ onBeforeUnmount(() => {
 }
 
 /* ---------- 全屏 UI ---------- */
-.fs-title {
+.fs-top {
   position: absolute;
-  top: 18px;
-  left: 18px;
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: #ffffff;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  padding: 16px 18px;
+  z-index: 6;
   pointer-events: none;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  z-index: 5;
+}
+
+.fs-exit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  cursor: pointer;
+  flex-shrink: 0;
+  pointer-events: auto;
+}
+
+.fs-chapters-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  background: transparent;
 }
 
 .fs-chapters {
@@ -1140,9 +1255,9 @@ onBeforeUnmount(() => {
   top: 0;
   right: 0;
   bottom: 0;
-  width: 337px;
-  max-width: 45vw;
-  padding: 12px 30px 20px;
+  width: 300px;
+  max-width: 48vw;
+  padding: 24px 20px 20px;
   box-sizing: border-box;
   background: rgba(0, 0, 0, 0.75);
   color: #ffffff;
@@ -1151,10 +1266,10 @@ onBeforeUnmount(() => {
 }
 
 .fs-chapters-header {
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 500;
-  line-height: 24px;
-  margin-bottom: 10px;
+  line-height: 1.3;
+  margin-bottom: 14px;
 }
 
 .fs-chapters-list {
@@ -1163,18 +1278,18 @@ onBeforeUnmount(() => {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .fs-chapter {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 3px 10px;
-  border: 0.5px solid #ffffff;
-  border-radius: 7px;
+  gap: 12px;
+  padding: 8px 14px;
+  border: 1px solid #ffffff;
+  border-radius: 14px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.4;
 }
 
@@ -1185,15 +1300,14 @@ onBeforeUnmount(() => {
 .fs-chapter-time {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 5px;
+  gap: 6px;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .fs-chapter-play {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   color: #ffffff;
 }
 
@@ -1208,13 +1322,13 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 0 30px 18px;
+  padding: 0 24px 20px;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.35) 60%, transparent);
   z-index: 6;
 }
 
 .fs-progress {
-  height: 20px;
+  height: 24px;
   display: flex;
   align-items: center;
   cursor: pointer;
@@ -1224,9 +1338,9 @@ onBeforeUnmount(() => {
 .fs-progress-track {
   position: relative;
   width: 100%;
-  height: 3px;
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 2px;
+  height: 6px;
+  background: #d2d2d2;
+  border-radius: 28px;
 }
 
 .fs-progress-played {
@@ -1234,32 +1348,33 @@ onBeforeUnmount(() => {
   left: 0;
   top: 0;
   bottom: 0;
-  background: #0A85FF;
-  border-radius: 2px;
+  background: #ffffff;
+  border-radius: 28px;
 }
 
 .fs-progress-dot {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #ffffff;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
 }
 
 .fs-controls-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 20px;
 }
 
 .fs-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border: none;
   background: transparent;
   color: #ffffff;
@@ -1267,8 +1382,13 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
+.fs-btn-play {
+  width: 44px;
+  height: 44px;
+}
+
 .fs-time {
-  font-size: 16px;
+  font-size: 15px;
   color: #ffffff;
   white-space: nowrap;
   flex-shrink: 0;
@@ -1281,16 +1401,14 @@ onBeforeUnmount(() => {
 .fs-chapter-chip {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  height: 30px;
-  padding: 0 20px;
+  height: 32px;
+  padding: 0 16px;
   border-radius: 16px;
-  /* background: rgba(25, 29, 38, 0.6); */
-  font-size: 16px;
   color: #ffffff;
+  font-size: 15px;
   white-space: nowrap;
   flex-shrink: 0;
-  max-width: 40%;
+  max-width: 35%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1303,20 +1421,20 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 30px;
-  padding: 0 20px;
-  border: 0.5px solid #ffffff;
-  border-radius: 16px;
+  height: 40px;
+  padding: 0 24px;
+  border: 1px solid #ffffff;
+  border-radius: 20px;
   background: transparent;
   color: #ffffff;
-  font-size: 16px;
+  font-size: 15px;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .fs-speed {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .fs-speed-wrap {
@@ -1325,7 +1443,7 @@ onBeforeUnmount(() => {
 }
 
 .fs-speed-menu {
-  bottom: 40px;
+  bottom: 48px;
   right: 0;
   z-index: 10;
 }
