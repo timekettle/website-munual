@@ -69,13 +69,6 @@ const i18n: Record<string, { download: string; loading: string; retry: string }>
   es: { download: 'Descargar', loading: 'Cargando...', retry: 'Reintentar' },
   ja: { download: 'ダウンロード', loading: '読み込み中...', retry: 'リトライ' },
   de: { download: 'Herunterladen', loading: 'Laden...', retry: 'Wiederholen' },
-  fr: { download: 'Télécharger', loading: 'Chargement...', retry: 'Réessayer' },
-  ko: { download: '다운로드', loading: '로딩 중...', retry: '재시도' },
-  th: { download: 'ดาวน์โหลด', loading: 'กำลังโหลด...', retry: 'ลองใหม่' },
-  ru: { download: 'Скачать', loading: 'Загрузка...', retry: 'Повторить' },
-  'zh-TW': { download: '下載', loading: '載入中...', retry: '重試' },
-  tr: { download: 'İndir', loading: 'Yükleniyor...', retry: 'Tekrar dene' },
-  uk: { download: 'Завантажити', loading: 'Завантаження...', retry: 'Повторити' },
 }
 
 const resolveLocale = (lang: string): { download: string; loading: string; retry: string } => {

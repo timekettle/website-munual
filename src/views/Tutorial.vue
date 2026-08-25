@@ -66,7 +66,7 @@
     <main v-if="activeTab === 'video'" class="video-tab">
       <div class="video-main">
       <!-- 视频播放器（自定义控制条：无音量，含倍速与全屏） -->
-      <div class="video-player" :class="{ 'css-fullscreen': cssFullscreen }" ref="videoPlayerRef" @mouseenter="isHovering = true" @mouseleave="isHovering = false">
+      <div class="video-player" :class="{ 'css-fullscreen': cssFullscreen }" ref="videoPlayerRef" @mouseenter="isHovering = true" @mouseleave="isHovering = false" @mousemove="onPlayerMove" @touchstart="onPlayerTouch" @touchmove="onPlayerTouch">
         <video
           ref="videoRef"
           class="video-el"
@@ -101,7 +101,7 @@
         </div>
 
         <!-- 底部控制条 -->
-        <div v-if="!fullscreen" class="video-controls" :class="{ 'controls-hidden': playing && !isHovering }" @click.stop>
+        <div v-if="!fullscreen" class="video-controls" :class="{ 'controls-hidden': controlsHiddenEffect }" @click.stop>
           <button type="button" class="ctrl-btn" :aria-label="playing ? 'pause' : 'play'" @click="togglePlay">
             <svg v-if="playing" viewBox="0 0 24 24" width="18" height="18">
               <path d="M6 5h4v14H6zM14 5h4v14h-4z" fill="currentColor" />
@@ -156,7 +156,7 @@
         </div>
 
         <!-- 全屏专属 UI：顶部（章节徽章 + 返回）、章节抽屉、底部控制条 -->
-        <div v-if="fullscreen" class="fs-top">
+        <div v-if="fullscreen" class="fs-top" :class="{ 'fs-ui-hidden': fsUiHidden }">
           <button type="button" class="fs-exit" aria-label="exit fullscreen" @click="toggleFullscreen">
             <svg viewBox="0 0 24 24" width="28" height="28">
               <path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
@@ -187,7 +187,7 @@
           </ul>
         </aside>
 
-        <div v-if="fullscreen" class="fs-controls" @click.stop>
+        <div v-if="fullscreen" class="fs-controls" :class="{ 'fs-ui-hidden': fsUiHidden }" @click.stop>
           <div class="fs-progress" ref="fsProgressRef" @click="onFsSeek">
             <div class="fs-progress-track">
               <div class="fs-progress-played" :style="{ width: progress + '%' }"></div>
@@ -208,7 +208,7 @@
             </span>
             <span v-if="activeTimelineLabel" class="fs-chapter-chip">{{ activeTimelineLabel }}</span>
             <span class="fs-spacer"></span>
-            <button type="button" class="fs-pill" @click="toggleFsChapters">{{ t.chapters }}</button>
+            <button v-if="timeline.length > 0" type="button" class="fs-pill" @click="toggleFsChapters">{{ t.chapters }}</button>
             <div class="fs-speed-wrap">
               <button type="button" class="fs-pill fs-speed" @click.stop="toggleSpeedMenu">{{ speedShort }}</button>
               <ul v-if="speedMenuOpen" class="speed-menu fs-speed-menu" @click.stop>
@@ -452,28 +452,14 @@ const languages = [
   { code: 'es', label: 'Español', zhName: '西班牙语' },
   { code: 'ja', label: '日本語', zhName: '日语' },
   { code: 'de', label: 'Deutsch', zhName: '德语' },
-  { code: 'fr', label: 'Français', zhName: '法语' },
-  { code: 'ko', label: '한국어', zhName: '韩语' },
-  { code: 'th', label: 'ไทย', zhName: '泰语' },
-  { code: 'ru', label: 'Русский', zhName: '俄语' },
-  { code: 'zh-TW', label: '繁體中文', zhName: '繁体中文' },
-  { code: 'tr', label: 'Türkçe', zhName: '土耳其语' },
-  { code: 'uk', label: 'Українська', zhName: '乌克兰语' },
 ] as const
 
 const messages: Record<string, Messages> = {
   zh: { tabVideo: '操作视频', tabManual: '使用手册', directory: '目录', manualEmpty: '暂无内容', helpCenter: '帮助中心', langSelect: '语言选择', chapters: '章节', chapterList: '章节目录', videoOverview: '使用教学汇总', videoGroupMeeting: '多人会议模式', videoTwoPerson: '双人对话模式', videoListen: '旁听翻译模式', videoHandheld: '手持翻译模式', videoCall: '通话/视频翻译模式', videoOther: '其他', tUnbox: '开箱', tActivate: '激活', tOffline: '离线翻译模式', tSpeed: '翻译速度调整', tExportMinutes: '导出会议纪要', tUploadLogs: '上传日志', tSystemUpdate: '系统和耳机升级', tFactoryReset: '恢复出厂设置', tEartips: '耳套和耳挂', tHost: '主持人端操作', tMember: '成员端操作', tPhone: '手机端操作', tComputer: '电脑端操作', tMicNotes: '耳机收音注意事项', tLangSwitch: '语种切换说明', tMeetingSettings: '主持人-会议设置讲解', tKeySettings: '主持人-关键设置开关说明' },
-  en: { tabVideo: 'Tutorial Videos', tabManual: 'User Manual', directory: 'Video List', manualEmpty: 'No content yet', helpCenter: 'Help Center', langSelect: 'Language', chapters: 'Chapters', chapterList: 'Chapter List', videoOverview: 'Tutorial Overview', videoGroupMeeting: 'Group Meeting', videoTwoPerson: 'Two-person Conversation', videoListen: 'Listen Translation', videoHandheld: 'Handheld Translation', videoCall: 'Call & Video Translation', videoOther: 'Others', tUnbox: 'Unboxing', tActivate: 'Activation', tOffline: 'Offline Translation', tSpeed: 'Translation Speed', tExportMinutes: 'Export Meeting Minutes', tUploadLogs: 'Upload Logs', tSystemUpdate: 'System & Earbuds Update', tFactoryReset: 'Factory Reset', tEartips: 'Eartips & Ear Hooks', tHost: 'Host Controls', tMember: 'Member Controls', tPhone: 'Phone App', tComputer: 'Desktop App', tMicNotes: 'Earbud Mic Tips', tLangSwitch: 'Language Switching', tMeetingSettings: 'Host: Meeting Settings', tKeySettings: 'Host: Key Settings' },
-  es: { tabVideo: 'Vídeos de uso', tabManual: 'Manual de usuario', directory: 'Lista de vídeos', manualEmpty: 'Sin contenido', helpCenter: 'Centro de ayuda', langSelect: 'Idioma', chapters: 'Capítulos', chapterList: 'Lista de capítulos', videoOverview: 'Resumen de tutoriales', videoGroupMeeting: 'Reunión en grupo', videoTwoPerson: 'Conversación a dos', videoListen: 'Traducción en escucha', videoHandheld: 'Traducción de mano', videoCall: 'Traducción en llamadas', videoOther: 'Otros', tUnbox: 'Desembalaje', tActivate: 'Activación', tOffline: 'Traducción sin conexión', tSpeed: 'Velocidad de traducción', tExportMinutes: 'Exportar acta de reunión', tUploadLogs: 'Subir registros', tSystemUpdate: 'Actualización de sistema y auriculares', tFactoryReset: 'Restablecer de fábrica', tEartips: 'Almohadillas y ganchos', tHost: 'Controles del anfitrión', tMember: 'Controles del miembro', tPhone: 'App móvil', tComputer: 'App de escritorio', tMicNotes: 'Consejos del micrófono', tLangSwitch: 'Cambio de idioma', tMeetingSettings: 'Anfitrión: ajustes de reunión', tKeySettings: 'Anfitrión: ajustes clave' },
+  en: { tabVideo: 'Video', tabManual: 'Manual', directory: 'Video List', manualEmpty: 'No content yet', helpCenter: 'Help Center', langSelect: 'Language', chapters: 'Chapters', chapterList: 'Chapter List', videoOverview: 'Tutorial Overview', videoGroupMeeting: 'Group Meeting', videoTwoPerson: 'Two-person Conversation', videoListen: 'Listen Translation', videoHandheld: 'Handheld Translation', videoCall: 'Call & Video Translation', videoOther: 'Others', tUnbox: 'Unboxing', tActivate: 'Activation', tOffline: 'Offline Translation', tSpeed: 'Translation Speed', tExportMinutes: 'Export Meeting Minutes', tUploadLogs: 'Upload Logs', tSystemUpdate: 'System & Earbuds Update', tFactoryReset: 'Factory Reset', tEartips: 'Eartips & Ear Hooks', tHost: 'Host Controls', tMember: 'Member Controls', tPhone: 'Phone App', tComputer: 'Desktop App', tMicNotes: 'Earbud Mic Tips', tLangSwitch: 'Language Switching', tMeetingSettings: 'Host: Meeting Settings', tKeySettings: 'Host: Key Settings' },
+  es: { tabVideo: 'Vídeo', tabManual: 'Manual', directory: 'Lista de vídeos', manualEmpty: 'Sin contenido', helpCenter: 'Centro de ayuda', langSelect: 'Idioma', chapters: 'Capítulos', chapterList: 'Lista de capítulos', videoOverview: 'Resumen de tutoriales', videoGroupMeeting: 'Reunión en grupo', videoTwoPerson: 'Conversación a dos', videoListen: 'Traducción en escucha', videoHandheld: 'Traducción de mano', videoCall: 'Traducción en llamadas', videoOther: 'Otros', tUnbox: 'Desembalaje', tActivate: 'Activación', tOffline: 'Traducción sin conexión', tSpeed: 'Velocidad de traducción', tExportMinutes: 'Exportar acta de reunión', tUploadLogs: 'Subir registros', tSystemUpdate: 'Actualización de sistema y auriculares', tFactoryReset: 'Restablecer de fábrica', tEartips: 'Almohadillas y ganchos', tHost: 'Controles del anfitrión', tMember: 'Controles del miembro', tPhone: 'App móvil', tComputer: 'App de escritorio', tMicNotes: 'Consejos del micrófono', tLangSwitch: 'Cambio de idioma', tMeetingSettings: 'Anfitrión: ajustes de reunión', tKeySettings: 'Anfitrión: ajustes clave' },
   ja: { tabVideo: '操作動画', tabManual: '取扱説明書', directory: '動画一覧', manualEmpty: 'コンテンツなし', helpCenter: 'ヘルプセンター', langSelect: '言語', chapters: 'チャプター', chapterList: 'チャプター一覧', videoOverview: '使い方まとめ', videoGroupMeeting: '多人数会議', videoTwoPerson: '2人対話', videoListen: '傍聴翻訳', videoHandheld: '手持ち翻訳', videoCall: '通話・ビデオ翻訳', videoOther: 'その他', tUnbox: '開封', tActivate: 'アクティベーション', tOffline: 'オフライン翻訳', tSpeed: '翻訳速度の調整', tExportMinutes: '議事録のエクスポート', tUploadLogs: 'ログのアップロード', tSystemUpdate: 'システムとイヤホンの更新', tFactoryReset: '工場出荷状態にリセット', tEartips: 'イヤーピースとイヤーフック', tHost: 'ホスト側の操作', tMember: 'メンバー側の操作', tPhone: 'スマホでの操作', tComputer: 'パソコンでの操作', tMicNotes: 'イヤホンの集音の注意点', tLangSwitch: '言語の切り替え', tMeetingSettings: 'ホスト：会議設定', tKeySettings: 'ホスト：主要設定スイッチ' },
-  de: { tabVideo: 'Bedienungsvideo', tabManual: 'Bedienungsanleitung', directory: 'Videoliste', manualEmpty: 'Kein Inhalt', helpCenter: 'Hilfe-Center', langSelect: 'Sprache', chapters: 'Kapitel', chapterList: 'Kapitelliste', videoOverview: 'Tutorial-Übersicht', videoGroupMeeting: 'Gruppenbesprechung', videoTwoPerson: 'Gespräch zu zweit', videoListen: 'Zuhörübersetzung', videoHandheld: 'Handübersetzung', videoCall: 'Anruf- & Videoübersetzung', videoOther: 'Sonstiges', tUnbox: 'Auspacken', tActivate: 'Aktivierung', tOffline: 'Offline-Übersetzung', tSpeed: 'Übersetzungsgeschwindigkeit', tExportMinutes: 'Protokoll exportieren', tUploadLogs: 'Logs hochladen', tSystemUpdate: 'System- & Ohrhörer-Update', tFactoryReset: 'Werkseinstellungen', tEartips: 'Ohrstöpsel und Ohrbügel', tHost: 'Bedienung als Host', tMember: 'Bedienung als Teilnehmer', tPhone: 'Smartphone-App', tComputer: 'Desktop-App', tMicNotes: 'Hinweise zur Mikrofonaufnahme', tLangSwitch: 'Sprachwechsel', tMeetingSettings: 'Host: Besprechungseinstellungen', tKeySettings: 'Host: Wichtige Einstellungen' },
-  fr: { tabVideo: "Vidéos d'utilisation", tabManual: "Manuel d'utilisation", directory: 'Liste des vidéos', manualEmpty: 'Aucun contenu', helpCenter: "Centre d'aide", langSelect: 'Langue', chapters: 'Chapitres', chapterList: 'Liste des chapitres', videoOverview: 'Aperçu des tutoriels', videoGroupMeeting: 'Réunion de groupe', videoTwoPerson: 'Conversation à deux', videoListen: 'Traduction en écoute', videoHandheld: 'Traduction à la main', videoCall: 'Traduction en appel', videoOther: 'Autres', tUnbox: 'Déballage', tActivate: 'Activation', tOffline: 'Traduction hors ligne', tSpeed: 'Vitesse de traduction', tExportMinutes: 'Exporter le compte rendu', tUploadLogs: 'Envoyer les journaux', tSystemUpdate: 'Mise à jour du système et des écouteurs', tFactoryReset: "Réinitialisation d'usine", tEartips: 'Embouts et crochets', tHost: "Contrôles de l'hôte", tMember: 'Contrôles du membre', tPhone: 'App mobile', tComputer: 'App de bureau', tMicNotes: 'Conseils micro', tLangSwitch: 'Changement de langue', tMeetingSettings: 'Hôte : paramètres de réunion', tKeySettings: 'Hôte : paramètres clés' },
-  ko: { tabVideo: '사용 영상', tabManual: '사용 설명서', directory: '영상 목록', manualEmpty: '내용 없음', helpCenter: '고객센터', langSelect: '언어', chapters: '챕터', chapterList: '챕터 목록', videoOverview: '사용법 요약', videoGroupMeeting: '다자간 회의', videoTwoPerson: '2인 대화', videoListen: '방청 번역', videoHandheld: '핸드헬드 번역', videoCall: '통화·영상 번역', videoOther: '기타', tUnbox: '개봉', tActivate: '활성화', tOffline: '오프라인 번역', tSpeed: '번역 속도 조절', tExportMinutes: '회의록 내보내기', tUploadLogs: '로그 업로드', tSystemUpdate: '시스템 및 이어버드 업데이트', tFactoryReset: '공장 초기화', tEartips: '이어팁과 이어훅', tHost: '호스트 조작', tMember: '멤버 조작', tPhone: '휴대폰 조작', tComputer: '컴퓨터 조작', tMicNotes: '이어버드 수음 주의사항', tLangSwitch: '언어 전환 안내', tMeetingSettings: '호스트: 회의 설정', tKeySettings: '호스트: 주요 설정' },
-  th: { tabVideo: 'วิดีโอการใช้งาน', tabManual: 'คู่มือการใช้งาน', directory: 'รายการวิดีโอ', manualEmpty: 'ไม่มีเนื้อหา', helpCenter: 'ศูนย์ช่วยเหลือ', langSelect: 'ภาษา', chapters: 'บท', chapterList: 'รายการบท', videoOverview: 'สรุปวิธีใช้', videoGroupMeeting: 'ประชุมหลายคน', videoTwoPerson: 'สนทนาสองคน', videoListen: 'ฟังและแปล', videoHandheld: 'แปลแบบถือมือ', videoCall: 'แปลโทร/วิดีโอ', videoOther: 'อื่นๆ', tUnbox: 'แกะกล่อง', tActivate: 'เปิดใช้งาน', tOffline: 'แปลออฟไลน์', tSpeed: 'ปรับความเร็วการแปล', tExportMinutes: 'ส่งออกรายงานการประชุม', tUploadLogs: 'อัปโหลดบันทึก', tSystemUpdate: 'อัปเดตระบบและหูฟัง', tFactoryReset: 'รีเซ็ตเป็นค่าโรงงาน', tEartips: 'จุกหูฟังและขอเกี่ยวหู', tHost: 'การใช้งานฝั่งผู้จัด', tMember: 'การใช้งานฝั่งสมาชิก', tPhone: 'การใช้งานบนมือถือ', tComputer: 'การใช้งานบนคอมพิวเตอร์', tMicNotes: 'ข้อควรระวังเรื่องรับเสียง', tLangSwitch: 'วิธีสลับภาษา', tMeetingSettings: 'ผู้จัด: การตั้งค่าประชุม', tKeySettings: 'ผู้จัด: การตั้งค่าสำคัญ' },
-  ru: { tabVideo: 'Видеоинструкции', tabManual: 'Руководство пользователя', directory: 'Список видео', manualEmpty: 'Пока нет контента', helpCenter: 'Центр помощи', langSelect: 'Язык', chapters: 'Разделы', chapterList: 'Список разделов', videoOverview: 'Обзор инструкций', videoGroupMeeting: 'Групповая встреча', videoTwoPerson: 'Разговор вдвоём', videoListen: 'Перевод на слух', videoHandheld: 'Перевод в руках', videoCall: 'Перевод звонков и видео', videoOther: 'Другое', tUnbox: 'Распаковка', tActivate: 'Активация', tOffline: 'Офлайн-перевод', tSpeed: 'Скорость перевода', tExportMinutes: 'Экспорт протокола встречи', tUploadLogs: 'Загрузка журналов', tSystemUpdate: 'Обновление системы и наушников', tFactoryReset: 'Сброс к заводским настройкам', tEartips: 'Амбушюры и заушники', tHost: 'Действия ведущего', tMember: 'Действия участника', tPhone: 'Приложение на телефоне', tComputer: 'Приложение на компьютере', tMicNotes: 'Рекомендации по микрофону', tLangSwitch: 'Переключение языка', tMeetingSettings: 'Ведущий: настройки встречи', tKeySettings: 'Ведущий: ключевые настройки' },
-  'zh-TW': { tabVideo: '操作影片', tabManual: '使用手冊', directory: '影片目錄', manualEmpty: '暫無內容', helpCenter: '幫助中心', langSelect: '語言選擇', chapters: '章節', chapterList: '章節目錄', videoOverview: '使用教學彙總', videoGroupMeeting: '多人會議模式', videoTwoPerson: '雙人對話模式', videoListen: '旁聽翻譯模式', videoHandheld: '手持翻譯模式', videoCall: '通話/視訊翻譯模式', videoOther: '其他', tUnbox: '開箱', tActivate: '啟用', tOffline: '離線翻譯模式', tSpeed: '翻譯速度調整', tExportMinutes: '匯出會議紀錄', tUploadLogs: '上傳日誌', tSystemUpdate: '系統與耳機更新', tFactoryReset: '恢復原廠設定', tEartips: '耳套與耳掛', tHost: '主持人端操作', tMember: '成員端操作', tPhone: '手機端操作', tComputer: '電腦端操作', tMicNotes: '耳機收音注意事項', tLangSwitch: '語系切換說明', tMeetingSettings: '主持人-會議設定說明', tKeySettings: '主持人-關鍵設定開關說明' },
-  tr: { tabVideo: 'Kullanım Videoları', tabManual: 'Kullanım Kılavuzu', directory: 'Video Listesi', manualEmpty: 'Henüz içerik yok', helpCenter: 'Yardım Merkezi', langSelect: 'Dil', chapters: 'Bölümler', chapterList: 'Bölüm Listesi', videoOverview: 'Kullanım Özeti', videoGroupMeeting: 'Çok Kişili Toplantı', videoTwoPerson: 'İki Kişilik Görüşme', videoListen: 'Dinleyerek Çeviri', videoHandheld: 'Elde Çeviri', videoCall: 'Arama ve Video Çevirisi', videoOther: 'Diğer', tUnbox: 'Kutudan Çıkarma', tActivate: 'Etkinleştirme', tOffline: 'Çevrimdışı Çeviri', tSpeed: 'Çeviri Hızı', tExportMinutes: 'Toplantı Tutanağını Dışa Aktar', tUploadLogs: 'Günlükleri Yükle', tSystemUpdate: 'Sistem ve Kulaklık Güncellemesi', tFactoryReset: 'Fabrika Ayarlarına Sıfırla', tEartips: 'Kulak Uçları ve Kulak Kancaları', tHost: 'Moderatör İşlemleri', tMember: 'Üye İşlemleri', tPhone: 'Telefon Uygulaması', tComputer: 'Bilgisayar Uygulaması', tMicNotes: 'Kulaklık Mikrofonu İpuçları', tLangSwitch: 'Dil Değiştirme', tMeetingSettings: 'Moderatör: Toplantı Ayarları', tKeySettings: 'Moderatör: Önemli Ayarlar' },
-  uk: { tabVideo: 'Відеоінструкції', tabManual: 'Посібник користувача', directory: 'Список відео', manualEmpty: 'Поки немає контенту', helpCenter: 'Центр допомоги', langSelect: 'Мова', chapters: 'Розділи', chapterList: 'Список розділів', videoOverview: 'Огляд інструкцій', videoGroupMeeting: 'Групова нарада', videoTwoPerson: 'Розмова вдвох', videoListen: 'Переклад на слух', videoHandheld: 'Переклад у руках', videoCall: 'Переклад дзвінків і відео', videoOther: 'Інше', tUnbox: 'Розпакування', tActivate: 'Активація', tOffline: 'Офлайн-переклад', tSpeed: 'Швидкість перекладу', tExportMinutes: 'Експорт протоколу зустрічі', tUploadLogs: 'Завантаження журналів', tSystemUpdate: 'Оновлення системи та навушників', tFactoryReset: 'Скидання до заводських налаштувань', tEartips: 'Амбушури та завушні гачки', tHost: 'Дії ведучого', tMember: 'Дії учасника', tPhone: 'Застосунок на телефоні', tComputer: "Застосунок на комп'ютері", tMicNotes: 'Поради щодо мікрофона', tLangSwitch: 'Перемикання мови', tMeetingSettings: 'Ведучий: налаштування зустрічі', tKeySettings: 'Ведучий: ключові налаштування' },
+  de: { tabVideo: 'Video', tabManual: 'Handbuch', directory: 'Videoliste', manualEmpty: 'Kein Inhalt', helpCenter: 'Hilfe-Center', langSelect: 'Sprache', chapters: 'Kapitel', chapterList: 'Kapitelliste', videoOverview: 'Tutorial-Übersicht', videoGroupMeeting: 'Gruppenbesprechung', videoTwoPerson: 'Gespräch zu zweit', videoListen: 'Zuhörübersetzung', videoHandheld: 'Handübersetzung', videoCall: 'Anruf- & Videoübersetzung', videoOther: 'Sonstiges', tUnbox: 'Auspacken', tActivate: 'Aktivierung', tOffline: 'Offline-Übersetzung', tSpeed: 'Übersetzungsgeschwindigkeit', tExportMinutes: 'Protokoll exportieren', tUploadLogs: 'Logs hochladen', tSystemUpdate: 'System- & Ohrhörer-Update', tFactoryReset: 'Werkseinstellungen', tEartips: 'Ohrstöpsel und Ohrbügel', tHost: 'Bedienung als Host', tMember: 'Bedienung als Teilnehmer', tPhone: 'Smartphone-App', tComputer: 'Desktop-App', tMicNotes: 'Hinweise zur Mikrofonaufnahme', tLangSwitch: 'Sprachwechsel', tMeetingSettings: 'Host: Besprechungseinstellungen', tKeySettings: 'Host: Wichtige Einstellungen' },
 }
 
 const getDefaultLang = (): string => {
@@ -563,6 +549,18 @@ const drawerTop = ref(0)
 const langDrawerOpen = ref(false)
 const langDropdownVisible = ref(false)
 const isSmallScreen = ref(window.matchMedia('(max-width: 768px)').matches)
+
+// 全屏控制条自动隐藏：播放时闲置一段时间后淡出，避免遮挡视频
+const fsUiHidden = ref(false)
+let fsUiHideTimer: number | null = null
+
+// 小屏非全屏控制条自动隐藏：播放时 2s 无操作后淡出（触摸屏无 hover，改用定时器）
+const controlsHidden = ref(false)
+let controlsHideTimer: number | null = null
+
+// 延迟收起目录抽屉 / 全屏章节列表的定时器
+let drawerCloseTimer: number | null = null
+let fsChaptersCloseTimer: number | null = null
 // 当前章节按播放进度动态计算，播放跨越章节边界时标题/高亮随之切换
 const activeTimelineIndex = computed(() => {
   const list = timeline.value
@@ -586,8 +584,14 @@ const activeTimelineLabel = computed(() => {
 })
 const speedShort = computed(() => speed.value.replace(/\.0x$/, 'x'))
 
+// 小屏用定时器控制控制条显隐；桌面端沿用 hover 逻辑
+const controlsHiddenEffect = computed(() =>
+  isSmallScreen.value ? controlsHidden.value : playing.value && !isHovering.value
+)
+
 function switchTab(tab: TabKey) {
   activeTab.value = tab
+  clearDrawerCloseTimer()
   drawerOpen.value = false
 }
 
@@ -602,9 +606,14 @@ function selectVideo(id: number) {
   currentTime.value = 0
   duration.value = 0
   speedMenuOpen.value = false
-  drawerOpen.value = false
   fsChaptersOpen.value = false
   shouldAutoplay.value = true
+  // 移动端小屏：点击目录项后延迟 1s 再收起目录抽屉
+  clearDrawerCloseTimer()
+  drawerCloseTimer = window.setTimeout(() => {
+    drawerOpen.value = false
+    drawerCloseTimer = null
+  }, 1000)
 }
 
 function computeDrawerTop() {
@@ -615,11 +624,13 @@ function computeDrawerTop() {
 }
 
 function openDrawer() {
+  clearDrawerCloseTimer()
   computeDrawerTop()
   drawerOpen.value = true
 }
 
 function closeDrawer() {
+  clearDrawerCloseTimer()
   drawerOpen.value = false
 }
 
@@ -654,6 +665,14 @@ async function togglePlay() {
   } else {
     v.pause()
   }
+}
+
+// 空格键控制视频播放/暂停（仅在「操作视频」tab 生效，避免干扰手册滚动与按钮聚焦）
+function onKeydown(e: KeyboardEvent) {
+  if (e.code !== 'Space' || e.repeat) return
+  if (activeTab.value !== 'video') return
+  e.preventDefault()
+  togglePlay()
 }
 
 function playAt(index: number) {
@@ -794,22 +813,103 @@ function onFsSeek(e: MouseEvent) {
 }
 
 function toggleFsChapters() {
+  clearFsChaptersCloseTimer()
   fsChaptersOpen.value = !fsChaptersOpen.value
 }
 
 function playFsChapter(index: number) {
   playAt(index)
-  fsChaptersOpen.value = false
+  // 全屏点击章节后延迟 1s 再收起章节列表
+  clearFsChaptersCloseTimer()
+  fsChaptersCloseTimer = window.setTimeout(() => {
+    fsChaptersOpen.value = false
+    fsChaptersCloseTimer = null
+  }, 1000)
 }
 
 function toggleSpeedMenu() {
   speedMenuOpen.value = !speedMenuOpen.value
+  if (isSmallScreen.value && !fullscreen.value) {
+    if (speedMenuOpen.value) clearControlsHideTimer()
+    else revealControls()
+  }
 }
 
 function setSpeed(s: string) {
   speed.value = s
   if (videoRef.value) videoRef.value.playbackRate = parseFloat(s)
   speedMenuOpen.value = false
+  if (isSmallScreen.value && !fullscreen.value) revealControls()
+}
+
+function onPlayerMove() {
+  if (fullscreen.value) {
+    revealFsUi()
+  } else if (isSmallScreen.value) {
+    revealControls()
+  }
+}
+
+function onPlayerTouch() {
+  if (!fullscreen.value && isSmallScreen.value) revealControls()
+}
+
+function revealFsUi() {
+  fsUiHidden.value = false
+  if (playing.value) scheduleFsUiHide()
+}
+
+function scheduleFsUiHide() {
+  if (fsUiHideTimer !== null) clearTimeout(fsUiHideTimer)
+  fsUiHideTimer = window.setTimeout(() => {
+    if (playing.value && !speedMenuOpen.value && !fsChaptersOpen.value) {
+      fsUiHidden.value = true
+    }
+    fsUiHideTimer = null
+  }, 3000)
+}
+
+function clearFsUiHideTimer() {
+  if (fsUiHideTimer !== null) {
+    clearTimeout(fsUiHideTimer)
+    fsUiHideTimer = null
+  }
+}
+
+function revealControls() {
+  controlsHidden.value = false
+  if (playing.value && isSmallScreen.value && !fullscreen.value) scheduleControlsHide()
+}
+
+function scheduleControlsHide() {
+  clearControlsHideTimer()
+  controlsHideTimer = window.setTimeout(() => {
+    if (playing.value && isSmallScreen.value && !fullscreen.value && !speedMenuOpen.value) {
+      controlsHidden.value = true
+    }
+    controlsHideTimer = null
+  }, 2000)
+}
+
+function clearControlsHideTimer() {
+  if (controlsHideTimer !== null) {
+    clearTimeout(controlsHideTimer)
+    controlsHideTimer = null
+  }
+}
+
+function clearDrawerCloseTimer() {
+  if (drawerCloseTimer !== null) {
+    clearTimeout(drawerCloseTimer)
+    drawerCloseTimer = null
+  }
+}
+
+function clearFsChaptersCloseTimer() {
+  if (fsChaptersCloseTimer !== null) {
+    clearTimeout(fsChaptersCloseTimer)
+    fsChaptersCloseTimer = null
+  }
 }
 
 function formatTime(sec: number): string {
@@ -829,6 +929,43 @@ watch([drawerOpen, langDrawerOpen], ([drawer, lang]) => {
   document.body.style.overflow = drawer || lang ? 'hidden' : ''
 })
 
+// 全屏下播放/暂停与进出全屏时，控制条的自动隐藏调度
+watch(playing, (p) => {
+  if (fullscreen.value) {
+    if (p) {
+      scheduleFsUiHide()
+    } else {
+      fsUiHidden.value = false
+      clearFsUiHideTimer()
+    }
+    return
+  }
+  // 小屏非全屏：播放时 2s 无操作自动隐藏控制条，暂停时始终显示
+  if (isSmallScreen.value) {
+    if (p) {
+      scheduleControlsHide()
+    } else {
+      controlsHidden.value = false
+      clearControlsHideTimer()
+    }
+  }
+})
+
+watch(fullscreen, (f) => {
+  if (f) {
+    fsUiHidden.value = false
+    if (playing.value) scheduleFsUiHide()
+  } else {
+    fsUiHidden.value = false
+    clearFsUiHideTimer()
+    // 退出全屏回到小屏内联，若在播放则重新调度控制条自动隐藏
+    if (isSmallScreen.value) {
+      controlsHidden.value = false
+      if (playing.value) scheduleControlsHide()
+    }
+  }
+})
+
 function onWindowResize() {
   isSmallScreen.value = window.matchMedia('(max-width: 768px)').matches
   if (!isSmallScreen.value) {
@@ -839,6 +976,7 @@ function onWindowResize() {
 onMounted(() => {
   document.addEventListener('fullscreenchange', onFullscreenChange)
   window.addEventListener('resize', onWindowResize)
+  window.addEventListener('keydown', onKeydown)
   // 小屏进入页面默认展开目录弹窗（对应设计稿「默认进入页」）
   if (window.matchMedia('(max-width: 768px)').matches) {
     openDrawer()
@@ -848,7 +986,12 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   window.removeEventListener('resize', onWindowResize)
+  window.removeEventListener('keydown', onKeydown)
   document.body.style.overflow = ''
+  clearDrawerCloseTimer()
+  clearFsChaptersCloseTimer()
+  clearFsUiHideTimer()
+  clearControlsHideTimer()
 })
 </script>
 
@@ -1014,7 +1157,8 @@ onBeforeUnmount(() => {
   }
 }
 
-.video-player.css-fullscreen .video-el {
+.video-player.css-fullscreen .video-el,
+.video-player:fullscreen .video-el {
   background: #000000;
 }
 
@@ -1057,11 +1201,11 @@ onBeforeUnmount(() => {
   transform: scale(0.95);
 }
 
-/* 全屏时中央播放按钮放大，按设计稿（半透明圆底 + 大三角） */
+/* 全屏时中央播放按钮放大，按设计稿（灰底 + 大三角） */
 .video-placeholder.is-fullscreen .play-btn {
   width: 80px;
   height: 80px;
-  background: rgba(0, 0, 0, 0.35);
+  background: #989898;
 }
 
 .video-placeholder.is-fullscreen .play-btn svg {
@@ -1224,9 +1368,11 @@ onBeforeUnmount(() => {
   right: 0;
   display: flex;
   align-items: center;
-  padding: 16px 18px;
+  padding: 5px 18px;
   z-index: 6;
   pointer-events: none;
+  background:#000000;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 
 .fs-exit {
@@ -1300,6 +1446,7 @@ onBeforeUnmount(() => {
 .fs-chapter-time {
   display: inline-flex;
   align-items: center;
+  align-self: flex-start;
   gap: 6px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -1322,9 +1469,16 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 0 24px 20px;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.35) 60%, transparent);
+  padding: 0 16px 0px;
+  background: #000000;
   z-index: 6;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.fs-ui-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .fs-progress {
@@ -1332,7 +1486,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   cursor: pointer;
-  margin-bottom: 8px;
+  /* margin-bottom: 8px; */
 }
 
 .fs-progress-track {
@@ -1421,7 +1575,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 40px;
+  height: 30px;
   padding: 0 24px;
   border: 1px solid #ffffff;
   border-radius: 20px;
@@ -1546,9 +1700,6 @@ onBeforeUnmount(() => {
   }
 }
 
-.timeline-item.active {
-  background: #ECF2FD;
-}
 
 .timeline-item.active .timeline-chip {
   border: 1px solid #0A85FF;
@@ -1956,7 +2107,7 @@ onBeforeUnmount(() => {
     width: 370px;
     flex-shrink: 0;
     min-height: 0;
-    margin: 0px 16px 16px 0;
+    margin: 0px 16px 16px 6px;
     border: none;
     border-radius: 7px;
     background: #f7f9fb;
@@ -2012,7 +2163,7 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin: 4px 0 0;
+    margin: 8px 0 0;
     font-size: 14px;
     color: #626773;
     white-space: nowrap;
