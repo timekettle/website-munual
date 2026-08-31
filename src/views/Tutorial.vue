@@ -70,7 +70,7 @@
         <video
           ref="videoRef"
           class="video-el"
-          :key="currentVideo.id"
+          :key="currentVideo.url"
           :src="currentVideo.url"
           :poster="posterUrl"
           preload="metadata"
@@ -374,6 +374,11 @@ const audienceTranslationUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.c
 const callVideoUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/call_video.mp4'
 const holdInHandUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/hold_in_hand.mp4'
 const otherUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/other.mp4'
+// 多语言分语言视频（德语/日语等）所在目录前缀
+const tutorialClipBase = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/X1%20Meeting%20Tutorials/X1M%20%E6%95%99%E5%AD%A6%E5%88%86%E5%89%AA%E8%BE%91'
+
+// 多人会议分剪辑（德语/日语等）所在目录前缀（多人会议为独立目录，文件名即语言名）
+const groupMeetingClipBase = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/X1%20Meeting%20Tutorials/X1M%20%E5%A4%9A%E4%BA%BA%E4%BC%9A%E8%AE%AE%20%E5%88%86%E5%89%AA%E8%BE%91'
 import logoUrl from '../assets/tutorial/logo.svg'
 import directoryIconUrl from '../assets/tutorial/icon_directory.svg'
 import langIconUrl from '../assets/tutorial/icon_lang.svg'
@@ -421,6 +426,12 @@ interface Messages {
   tSystemUpdate: string
   tFactoryReset: string
   tEartips: string
+  // 汇总视频专属章节（英语/西班牙语/德语使用；中文/日语沿用默认章节）
+  tMultiMode: string
+  tOneToOne: string
+  tListenPlay: string
+  tMedia: string
+  tQandAHandheld: string
   tHost: string
   tMember: string
   tPhone: string
@@ -443,7 +454,9 @@ interface VideoMeta {
   titleKey: MsgKey
   icon: string
   url: string
+  urlByLang?: Partial<Record<string, string>>
   duration: string
+  durationByLang?: Partial<Record<string, string>>
 }
 
 const languages = [
@@ -455,11 +468,11 @@ const languages = [
 ] as const
 
 const messages: Record<string, Messages> = {
-  zh: { tabVideo: '操作视频', tabManual: '使用手册', directory: '目录', manualEmpty: '暂无内容', helpCenter: '帮助中心', langSelect: '语言选择', chapters: '章节', chapterList: '章节目录', videoOverview: '使用教学汇总', videoGroupMeeting: '多人会议模式', videoTwoPerson: '双人对话模式', videoListen: '旁听翻译模式', videoHandheld: '手持翻译模式', videoCall: '通话/视频翻译模式', videoOther: '其他', tUnbox: '开箱', tActivate: '激活', tOffline: '离线翻译模式', tSpeed: '翻译速度调整', tExportMinutes: '导出会议纪要', tUploadLogs: '上传日志', tSystemUpdate: '系统和耳机升级', tFactoryReset: '恢复出厂设置', tEartips: '耳套和耳挂', tHost: '主持人端操作', tMember: '成员端操作', tPhone: '手机端操作', tComputer: '电脑端操作', tMicNotes: '耳机收音注意事项', tLangSwitch: '语种切换说明', tMeetingSettings: '主持人-会议设置讲解', tKeySettings: '主持人-关键设置开关说明' },
-  en: { tabVideo: 'Video', tabManual: 'Manual', directory: 'Video List', manualEmpty: 'No content yet', helpCenter: 'Help Center', langSelect: 'Language', chapters: 'Chapters', chapterList: 'Chapter List', videoOverview: 'Tutorial Overview', videoGroupMeeting: 'Group Meeting', videoTwoPerson: 'Two-person Conversation', videoListen: 'Listen Translation', videoHandheld: 'Handheld Translation', videoCall: 'Call & Video Translation', videoOther: 'Others', tUnbox: 'Unboxing', tActivate: 'Activation', tOffline: 'Offline Translation', tSpeed: 'Translation Speed', tExportMinutes: 'Export Meeting Minutes', tUploadLogs: 'Upload Logs', tSystemUpdate: 'System & Earbuds Update', tFactoryReset: 'Factory Reset', tEartips: 'Eartips & Ear Hooks', tHost: 'Host Controls', tMember: 'Member Controls', tPhone: 'Phone App', tComputer: 'Desktop App', tMicNotes: 'Earbud Mic Tips', tLangSwitch: 'Language Switching', tMeetingSettings: 'Host: Meeting Settings', tKeySettings: 'Host: Key Settings' },
-  es: { tabVideo: 'Vídeo', tabManual: 'Manual', directory: 'Lista de vídeos', manualEmpty: 'Sin contenido', helpCenter: 'Centro de ayuda', langSelect: 'Idioma', chapters: 'Capítulos', chapterList: 'Lista de capítulos', videoOverview: 'Resumen de tutoriales', videoGroupMeeting: 'Reunión en grupo', videoTwoPerson: 'Conversación a dos', videoListen: 'Traducción en escucha', videoHandheld: 'Traducción de mano', videoCall: 'Traducción en llamadas', videoOther: 'Otros', tUnbox: 'Desembalaje', tActivate: 'Activación', tOffline: 'Traducción sin conexión', tSpeed: 'Velocidad de traducción', tExportMinutes: 'Exportar acta de reunión', tUploadLogs: 'Subir registros', tSystemUpdate: 'Actualización de sistema y auriculares', tFactoryReset: 'Restablecer de fábrica', tEartips: 'Almohadillas y ganchos', tHost: 'Controles del anfitrión', tMember: 'Controles del miembro', tPhone: 'App móvil', tComputer: 'App de escritorio', tMicNotes: 'Consejos del micrófono', tLangSwitch: 'Cambio de idioma', tMeetingSettings: 'Anfitrión: ajustes de reunión', tKeySettings: 'Anfitrión: ajustes clave' },
-  ja: { tabVideo: '操作動画', tabManual: '取扱説明書', directory: '動画一覧', manualEmpty: 'コンテンツなし', helpCenter: 'ヘルプセンター', langSelect: '言語', chapters: 'チャプター', chapterList: 'チャプター一覧', videoOverview: '使い方まとめ', videoGroupMeeting: '多人数会議', videoTwoPerson: '2人対話', videoListen: '傍聴翻訳', videoHandheld: '手持ち翻訳', videoCall: '通話・ビデオ翻訳', videoOther: 'その他', tUnbox: '開封', tActivate: 'アクティベーション', tOffline: 'オフライン翻訳', tSpeed: '翻訳速度の調整', tExportMinutes: '議事録のエクスポート', tUploadLogs: 'ログのアップロード', tSystemUpdate: 'システムとイヤホンの更新', tFactoryReset: '工場出荷状態にリセット', tEartips: 'イヤーピースとイヤーフック', tHost: 'ホスト側の操作', tMember: 'メンバー側の操作', tPhone: 'スマホでの操作', tComputer: 'パソコンでの操作', tMicNotes: 'イヤホンの集音の注意点', tLangSwitch: '言語の切り替え', tMeetingSettings: 'ホスト：会議設定', tKeySettings: 'ホスト：主要設定スイッチ' },
-  de: { tabVideo: 'Video', tabManual: 'Handbuch', directory: 'Videoliste', manualEmpty: 'Kein Inhalt', helpCenter: 'Hilfe-Center', langSelect: 'Sprache', chapters: 'Kapitel', chapterList: 'Kapitelliste', videoOverview: 'Tutorial-Übersicht', videoGroupMeeting: 'Gruppenbesprechung', videoTwoPerson: 'Gespräch zu zweit', videoListen: 'Zuhörübersetzung', videoHandheld: 'Handübersetzung', videoCall: 'Anruf- & Videoübersetzung', videoOther: 'Sonstiges', tUnbox: 'Auspacken', tActivate: 'Aktivierung', tOffline: 'Offline-Übersetzung', tSpeed: 'Übersetzungsgeschwindigkeit', tExportMinutes: 'Protokoll exportieren', tUploadLogs: 'Logs hochladen', tSystemUpdate: 'System- & Ohrhörer-Update', tFactoryReset: 'Werkseinstellungen', tEartips: 'Ohrstöpsel und Ohrbügel', tHost: 'Bedienung als Host', tMember: 'Bedienung als Teilnehmer', tPhone: 'Smartphone-App', tComputer: 'Desktop-App', tMicNotes: 'Hinweise zur Mikrofonaufnahme', tLangSwitch: 'Sprachwechsel', tMeetingSettings: 'Host: Besprechungseinstellungen', tKeySettings: 'Host: Wichtige Einstellungen' },
+  zh: { tabVideo: '操作视频', tabManual: '使用手册', directory: '目录', manualEmpty: '暂无内容', helpCenter: '帮助中心', langSelect: '语言选择', chapters: '章节', chapterList: '章节目录', videoOverview: '使用教学汇总', videoGroupMeeting: '多人会议模式', videoTwoPerson: '双人对话模式', videoListen: '旁听翻译模式', videoHandheld: '手持翻译模式', videoCall: '通话/视频翻译模式', videoOther: '其他', tUnbox: '开箱', tActivate: '激活', tOffline: '离线翻译模式', tSpeed: '翻译速度调整', tExportMinutes: '导出会议纪要', tUploadLogs: '上传日志', tSystemUpdate: '系统和耳机升级', tFactoryReset: '恢复出厂设置', tEartips: '耳套和耳挂', tMultiMode: '多模式翻译', tOneToOne: '一对一翻译模式', tListenPlay: '聆听与播放翻译模式', tMedia: '媒体翻译模式', tQandAHandheld: '问答与手持翻译模式', tHost: '主持人端操作', tMember: '成员端操作', tPhone: '手机端操作', tComputer: '电脑端操作', tMicNotes: '耳机收音注意事项', tLangSwitch: '语种切换说明', tMeetingSettings: '主持人-会议设置讲解', tKeySettings: '主持人-关键设置开关说明' },
+  en: { tabVideo: 'Video', tabManual: 'Manual', directory: 'Video List', manualEmpty: 'No content yet', helpCenter: 'Help Center', langSelect: 'Language', chapters: 'Chapters', chapterList: 'Chapter List', videoOverview: 'Tutorial Overview', videoGroupMeeting: 'Group Meeting', videoTwoPerson: 'Two-person Conversation', videoListen: 'Listen Translation', videoHandheld: 'Handheld Translation', videoCall: 'Call & Video Translation', videoOther: 'Others', tUnbox: 'Unboxing', tActivate: 'Activation', tOffline: 'Offline Translation', tSpeed: 'Translation Speed', tExportMinutes: 'Export Meeting Minutes', tUploadLogs: 'Upload Logs', tSystemUpdate: 'System & Earbuds Update', tFactoryReset: 'Factory Reset', tEartips: 'Eartips & Ear Hooks', tMultiMode: 'Multi-mode Translation', tOneToOne: 'One-to-one Translation', tListenPlay: 'Listen & Play Translation', tMedia: 'Media Translation', tQandAHandheld: 'Q&A & Handheld Translation', tHost: 'Host Controls', tMember: 'Member Controls', tPhone: 'Phone App', tComputer: 'Desktop App', tMicNotes: 'Earbud Mic Tips', tLangSwitch: 'Language Switching', tMeetingSettings: 'Host: Meeting Settings', tKeySettings: 'Host: Key Settings' },
+  es: { tabVideo: 'Vídeo', tabManual: 'Manual', directory: 'Lista de vídeos', manualEmpty: 'Sin contenido', helpCenter: 'Centro de ayuda', langSelect: 'Idioma', chapters: 'Capítulos', chapterList: 'Lista de capítulos', videoOverview: 'Resumen de tutoriales', videoGroupMeeting: 'Reunión en grupo', videoTwoPerson: 'Conversación a dos', videoListen: 'Traducción en escucha', videoHandheld: 'Traducción de mano', videoCall: 'Traducción en llamadas', videoOther: 'Otros', tUnbox: 'Desembalaje', tActivate: 'Activación', tOffline: 'Traducción sin conexión', tSpeed: 'Velocidad de traducción', tExportMinutes: 'Exportar acta de reunión', tUploadLogs: 'Subir registros', tSystemUpdate: 'Actualización de sistema y auriculares', tFactoryReset: 'Restablecer de fábrica', tEartips: 'Almohadillas y ganchos', tMultiMode: 'Traducción multimodo', tOneToOne: 'Traducción uno a uno', tListenPlay: 'Traducción de escucha y reproducción', tMedia: 'Traducción multimedia', tQandAHandheld: 'Traducción de preguntas y de mano', tHost: 'Controles del anfitrión', tMember: 'Controles del miembro', tPhone: 'App móvil', tComputer: 'App de escritorio', tMicNotes: 'Consejos del micrófono', tLangSwitch: 'Cambio de idioma', tMeetingSettings: 'Anfitrión: ajustes de reunión', tKeySettings: 'Anfitrión: ajustes clave' },
+  ja: { tabVideo: '操作動画', tabManual: '取扱説明書', directory: '動画一覧', manualEmpty: 'コンテンツなし', helpCenter: 'ヘルプセンター', langSelect: '言語', chapters: 'チャプター', chapterList: 'チャプター一覧', videoOverview: '使い方まとめ', videoGroupMeeting: '多人数会議', videoTwoPerson: '2人対話', videoListen: '傍聴翻訳', videoHandheld: '手持ち翻訳', videoCall: '通話・ビデオ翻訳', videoOther: 'その他', tUnbox: '開封', tActivate: 'アクティベーション', tOffline: 'オフライン翻訳', tSpeed: '翻訳速度の調整', tExportMinutes: '議事録のエクスポート', tUploadLogs: 'ログのアップロード', tSystemUpdate: 'システムとイヤホンの更新', tFactoryReset: '工場出荷状態にリセット', tEartips: 'イヤーピースとイヤーフック', tMultiMode: '複数モード翻訳', tOneToOne: '1対1翻訳', tListenPlay: 'リスニング＆再生翻訳', tMedia: 'メディア翻訳', tQandAHandheld: '質問＆手持ち翻訳', tHost: 'ホスト側の操作', tMember: 'メンバー側の操作', tPhone: 'スマホでの操作', tComputer: 'パソコンでの操作', tMicNotes: 'イヤホンの集音の注意点', tLangSwitch: '言語の切り替え', tMeetingSettings: 'ホスト：会議設定', tKeySettings: 'ホスト：主要設定スイッチ' },
+  de: { tabVideo: 'Video', tabManual: 'Handbuch', directory: 'Videoliste', manualEmpty: 'Kein Inhalt', helpCenter: 'Hilfe-Center', langSelect: 'Sprache', chapters: 'Kapitel', chapterList: 'Kapitelliste', videoOverview: 'Tutorial-Übersicht', videoGroupMeeting: 'Gruppenbesprechung', videoTwoPerson: 'Gespräch zu zweit', videoListen: 'Zuhörübersetzung', videoHandheld: 'Handübersetzung', videoCall: 'Anruf- & Videoübersetzung', videoOther: 'Sonstiges', tUnbox: 'Auspacken', tActivate: 'Einschalten und Aktivierung', tOffline: 'Offline-Übersetzungsmodus', tSpeed: 'Anpassung der Übersetzungsgeschwindigkeit', tExportMinutes: 'Besprechungsprotokolle exportieren', tUploadLogs: 'Protokolle hochladen', tSystemUpdate: 'System- und Kopfhörer Firmware-Upgrade', tFactoryReset: 'Werkseinstellungen', tEartips: 'Ohrstöpsel und Ohrbügel', tMultiMode: 'Übersetzung für mehrere Modus', tOneToOne: 'Ein-zu-Eins-Übersetzungsmodus', tListenPlay: 'Hören & Abspielen-Übersetzungsmodus', tMedia: 'Medien-Übersetzung-Modus', tQandAHandheld: 'Fragen & Los-Handheld-Übersetzungsmodus', tHost: 'Bedienung als Host', tMember: 'Bedienung als Teilnehmer', tPhone: 'Smartphone-App', tComputer: 'Desktop-App', tMicNotes: 'Hinweise zur Mikrofonaufnahme', tLangSwitch: 'Sprachwechsel', tMeetingSettings: 'Host: Besprechungseinstellungen', tKeySettings: 'Host: Wichtige Einstellungen' },
 }
 
 const getDefaultLang = (): string => {
@@ -474,13 +487,26 @@ const currentLang = ref<string>(getDefaultLang())
 const t = computed<Messages>(() => messages[currentLang.value] ?? messages.zh)
 
 const videoMeta: VideoMeta[] = [
-  { id: 1, titleKey: 'videoOverview', icon: iconLight, url: videoUrl, duration: '11:04' },
-  { id: 2, titleKey: 'videoGroupMeeting', icon: iconGroup, url: groupMeetingUrl, duration: '5:06' },
-  { id: 3, titleKey: 'videoTwoPerson', icon: iconConversion, url: twoPersonConversationUrl, duration: '0:42' },
-  { id: 4, titleKey: 'videoListen', icon: iconListen, url: audienceTranslationUrl, duration: '0:41' },
-  { id: 5, titleKey: 'videoHandheld', icon: iconAsk, url: holdInHandUrl, duration: '0:20' },
-  { id: 6, titleKey: 'videoCall', icon: iconVideo, url: callVideoUrl, duration: '0:44' },
-  { id: 7, titleKey: 'videoOther', icon: iconOther, url: otherUrl, duration: '3:17' },
+  {
+    id: 1,
+    titleKey: 'videoOverview',
+    icon: iconLight,
+    url: videoUrl,
+    urlByLang: {
+      en: 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/X1%20Meeting%20Tutorials/X1_Meeting-Tutorial-EN.mp4',
+      es: 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/X1%20Meeting%20Tutorials/X1_Meeting-Tutorial-ES.mp4',
+      ja: 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/X1%20Meeting%20Tutorials/X1_Meeting-Tutorial-JP.mp4',
+      de: 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/X1%20Meeting%20Tutorials/X1_Meeting-Tutorial-DE.mp4',
+    },
+    duration: '11:04',
+    durationByLang: { en: '11:47', es: '13:01', ja: '11:58', de: '12:49' },
+  },
+  { id: 2, titleKey: 'videoGroupMeeting', icon: iconGroup, url: groupMeetingUrl, urlByLang: { de: `${groupMeetingClipBase}/%E5%BE%B7%E8%AF%AD.mp4`, ja: `${groupMeetingClipBase}/%E6%97%A5%E8%AF%AD.mp4`, en: `${groupMeetingClipBase}/%E8%8B%B1%E6%96%87.mp4`, es: `${groupMeetingClipBase}/%E8%A5%BF%E8%AF%AD.mp4` }, duration: '5:06', durationByLang: { en: '5:27', es: '6:14', ja: '5:33', de: '5:58' } },
+  { id: 3, titleKey: 'videoTwoPerson', icon: iconConversion, url: twoPersonConversationUrl, urlByLang: { de: `${tutorialClipBase}/%E5%BE%B7%E8%AF%AD/%E5%8F%8C%E4%BA%BA%E5%AF%B9%E8%AF%9D.mp4`, ja: `${tutorialClipBase}/%E6%97%A5%E8%AF%AD/%E5%8F%8C%E4%BA%BA%E5%AF%B9%E8%AF%9D.mp4`, en: `${tutorialClipBase}/%E8%8B%B1%E6%96%87/%E5%8F%8C%E4%BA%BA%E5%AF%B9%E8%AF%9D.mp4`, es: `${tutorialClipBase}/%E8%A5%BF%E8%AF%AD/%E5%8F%8C%E4%BA%BA%E5%AF%B9%E8%AF%9D.mp4` }, duration: '0:42', durationByLang: { en: '0:47', es: '0:48', ja: '0:46', de: '0:48' } },
+  { id: 4, titleKey: 'videoListen', icon: iconListen, url: audienceTranslationUrl, urlByLang: { de: `${tutorialClipBase}/%E5%BE%B7%E8%AF%AD/%E6%97%81%E5%90%AC%E7%BF%BB%E8%AF%91.mp4`, ja: `${tutorialClipBase}/%E6%97%A5%E8%AF%AD/%E6%97%81%E5%90%AC%E7%BF%BB%E8%AF%91.mp4`, en: `${tutorialClipBase}/%E8%8B%B1%E6%96%87/%E6%97%81%E5%90%AC%E7%BF%BB%E8%AF%91.mp4`, es: `${tutorialClipBase}/%E8%A5%BF%E8%AF%AD/%E6%97%81%E5%90%AC%E7%BF%BB%E8%AF%91.mp4` }, duration: '0:41', durationByLang: { en: '0:43', es: '0:48', ja: '0:44', de: '0:51' } },
+  { id: 5, titleKey: 'videoHandheld', icon: iconAsk, url: holdInHandUrl, urlByLang: { de: `${tutorialClipBase}/%E5%BE%B7%E8%AF%AD/%E6%89%8B%E6%8C%81%E7%BF%BB%E8%AF%91.mp4`, ja: `${tutorialClipBase}/%E6%97%A5%E8%AF%AD/%E6%89%8B%E6%8C%81%E7%BF%BB%E8%AF%91.mp4`, en: `${tutorialClipBase}/%E8%8B%B1%E6%96%87/%E6%89%8B%E6%8C%81%E7%BF%BB%E8%AF%91.mp4`, es: `${tutorialClipBase}/%E8%A5%BF%E8%AF%AD/%E6%89%8B%E6%8C%81%E7%BF%BB%E8%AF%91.mp4` }, duration: '0:20', durationByLang: { en: '0:23', es: '0:26', ja: '0:23', de: '0:24' } },
+  { id: 6, titleKey: 'videoCall', icon: iconVideo, url: callVideoUrl, urlByLang: { de: `${tutorialClipBase}/%E5%BE%B7%E8%AF%AD/%E9%80%9A%E8%AF%9D%E8%A7%86%E9%A2%91%E7%BF%BB%E8%AF%91.mp4`, ja: `${tutorialClipBase}/%E6%97%A5%E8%AF%AD/%E9%80%9A%E8%AF%9D%E8%A7%86%E9%A2%91%E7%BF%BB%E8%AF%91.mp4`, en: `${tutorialClipBase}/%E8%8B%B1%E6%96%87/%E9%80%9A%E8%AF%9D%E8%A7%86%E9%A2%91%E7%BF%BB%E8%AF%91.mp4`, es: `${tutorialClipBase}/%E8%A5%BF%E8%AF%AD/%E9%80%9A%E8%AF%9D%E8%A7%86%E9%A2%91%E7%BF%BB%E8%AF%91.mp4` }, duration: '0:44', durationByLang: { en: '0:50', es: '0:56', ja: '0:50', de: '0:58' } },
+  { id: 7, titleKey: 'videoOther', icon: iconOther, url: otherUrl, urlByLang: { de: `${tutorialClipBase}/%E5%BE%B7%E8%AF%AD/%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD-%E6%97%A5%E5%BF%97%20%E5%8D%87%E7%BA%A7%20%E4%BD%A9%E6%88%B4.mp4`, ja: `${tutorialClipBase}/%E6%97%A5%E8%AF%AD/%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD-%E6%97%A5%E5%BF%97%20%E5%8D%87%E7%BA%A7%20%E4%BD%A9%E6%88%B4.mp4`, en: `${tutorialClipBase}/%E8%8B%B1%E6%96%87/%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD-%E6%97%A5%E5%BF%97%20%E5%8D%87%E7%BA%A7%20%E4%BD%A9%E6%88%B4.mp4`, es: `${tutorialClipBase}/%E8%A5%BF%E8%AF%AD/%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD-%E6%97%A5%E5%BF%97%20%E5%8D%87%E7%BA%A7%20%E4%BD%A9%E6%88%B4.mp4` }, duration: '3:17', durationByLang: { en: '1:44', es: '1:52', ja: '1:46', de: '1:52' } },
 ]
 
 const videos = computed<VideoItem[]>(() =>
@@ -488,8 +514,8 @@ const videos = computed<VideoItem[]>(() =>
     id: m.id,
     title: t.value[m.titleKey],
     icon: m.icon,
-    url: m.url,
-    duration: m.duration,
+    url: m.urlByLang?.[currentLang.value] ?? m.url,
+    duration: m.durationByLang?.[currentLang.value] ?? m.duration,
   }))
 )
 
@@ -522,6 +548,169 @@ const timelineMeta: Record<number, TimelineMetaItem[]> = {
     { seconds: 271, key: 'tMeetingSettings' },
     { seconds: 288, key: 'tKeySettings' },
   ],
+  7: [
+    { seconds: 0, key: 'tUnbox' },
+    { seconds: 16, key: 'tActivate' },
+    { seconds: 82, key: 'tOffline' },
+    { seconds: 101, key: 'tSpeed' },
+    { seconds: 109, key: 'tExportMinutes' },
+    { seconds: 141, key: 'tUploadLogs' },
+    { seconds: 155, key: 'tSystemUpdate' },
+    { seconds: 181, key: 'tEartips' },
+  ],
+}
+
+// 汇总视频（id=1）、多人会议视频（id=2）、其他功能视频（id=7）各语言章节时间点不同，按语言单独覆盖。
+// id=1：英语/西班牙语/德语沿用「多模式/一对一/聆听播放/媒体/问答手持」结构；
+//       日语沿用默认（中文）「多人会议/旁听/通话视频/手持」结构，且无「双人对话」「恢复出厂设置」章节。
+// id=2：各语言仅时间点不同（章节结构与默认一致）。
+// id=7：默认（中文）含开箱/激活/离线等前段章节；英语/西语/德语/日语仅含后半段（速度/导出/上传/升级/恢复出厂/耳套）。
+const timelineByLang: Partial<Record<string, Record<number, TimelineMetaItem[]>>> = {
+  en: {
+    1: [
+      { seconds: 3, key: 'tUnbox' },
+      { seconds: 22, key: 'tActivate' },
+      { seconds: 88, key: 'tMultiMode' },
+      { seconds: 416, key: 'tOneToOne' },
+      { seconds: 463, key: 'tListenPlay' },
+      { seconds: 507, key: 'tMedia' },
+      { seconds: 557, key: 'tQandAHandheld' },
+      { seconds: 581, key: 'tOffline' },
+      { seconds: 603, key: 'tSpeed' },
+      { seconds: 612, key: 'tExportMinutes' },
+      { seconds: 645, key: 'tUploadLogs' },
+      { seconds: 660, key: 'tSystemUpdate' },
+      { seconds: 671, key: 'tFactoryReset' },
+      { seconds: 686, key: 'tEartips' },
+    ],
+    2: [
+      { seconds: 0, key: 'videoGroupMeeting' },
+      { seconds: 8, key: 'tHost' },
+      { seconds: 87, key: 'tMember' },
+      { seconds: 146, key: 'tPhone' },
+      { seconds: 200, key: 'tComputer' },
+      { seconds: 245, key: 'tMicNotes' },
+      { seconds: 271, key: 'tLangSwitch' },
+      { seconds: 288, key: 'tMeetingSettings' },
+      { seconds: 307, key: 'tKeySettings' },
+    ],
+    7: [
+      { seconds: 1, key: 'tSpeed' },
+      { seconds: 9, key: 'tExportMinutes' },
+      { seconds: 42, key: 'tUploadLogs' },
+      { seconds: 56, key: 'tSystemUpdate' },
+      { seconds: 68, key: 'tFactoryReset' },
+      { seconds: 84, key: 'tEartips' },
+    ],
+  },
+  es: {
+    1: [
+      { seconds: 3, key: 'tUnbox' },
+      { seconds: 22, key: 'tActivate' },
+      { seconds: 90, key: 'tMultiMode' },
+      { seconds: 465, key: 'tOneToOne' },
+      { seconds: 514, key: 'tListenPlay' },
+      { seconds: 562, key: 'tMedia' },
+      { seconds: 619, key: 'tQandAHandheld' },
+      { seconds: 644, key: 'tOffline' },
+      { seconds: 669, key: 'tSpeed' },
+      { seconds: 678, key: 'tExportMinutes' },
+      { seconds: 712, key: 'tUploadLogs' },
+      { seconds: 728, key: 'tSystemUpdate' },
+      { seconds: 739, key: 'tFactoryReset' },
+      { seconds: 756, key: 'tEartips' },
+    ],
+    2: [
+      { seconds: 0, key: 'videoGroupMeeting' },
+      { seconds: 8, key: 'tHost' },
+      { seconds: 101, key: 'tMember' },
+      { seconds: 167, key: 'tPhone' },
+      { seconds: 227, key: 'tComputer' },
+      { seconds: 280, key: 'tMicNotes' },
+      { seconds: 310, key: 'tLangSwitch' },
+      { seconds: 329, key: 'tMeetingSettings' },
+      { seconds: 352, key: 'tKeySettings' },
+    ],
+    7: [
+      { seconds: 1, key: 'tSpeed' },
+      { seconds: 9, key: 'tExportMinutes' },
+      { seconds: 44, key: 'tUploadLogs' },
+      { seconds: 58, key: 'tSystemUpdate' },
+      { seconds: 70, key: 'tFactoryReset' },
+      { seconds: 87, key: 'tEartips' },
+    ],
+  },
+  ja: {
+    1: [
+      { seconds: 3, key: 'tUnbox' },
+      { seconds: 22, key: 'tActivate' },
+      { seconds: 90, key: 'videoGroupMeeting' },
+      { seconds: 472, key: 'videoListen' },
+      { seconds: 516, key: 'videoCall' },
+      { seconds: 566, key: 'videoHandheld' },
+      { seconds: 590, key: 'tOffline' },
+      { seconds: 613, key: 'tSpeed' },
+      { seconds: 621, key: 'tExportMinutes' },
+      { seconds: 655, key: 'tUploadLogs' },
+      { seconds: 670, key: 'tSystemUpdate' },
+      { seconds: 698, key: 'tEartips' },
+    ],
+    2: [
+      { seconds: 0, key: 'videoGroupMeeting' },
+      { seconds: 8, key: 'tHost' },
+      { seconds: 89, key: 'tMember' },
+      { seconds: 159, key: 'tPhone' },
+      { seconds: 204, key: 'tComputer' },
+      { seconds: 252, key: 'tMicNotes' },
+      { seconds: 278, key: 'tLangSwitch' },
+      { seconds: 294, key: 'tMeetingSettings' },
+      { seconds: 313, key: 'tKeySettings' },
+    ],
+    7: [
+      { seconds: 1, key: 'tSpeed' },
+      { seconds: 9, key: 'tExportMinutes' },
+      { seconds: 43, key: 'tUploadLogs' },
+      { seconds: 58, key: 'tSystemUpdate' },
+      { seconds: 69, key: 'tFactoryReset' },
+      { seconds: 85, key: 'tEartips' },
+    ],
+  },
+  de: {
+    1: [
+      { seconds: 3, key: 'tUnbox' },
+      { seconds: 24, key: 'tActivate' },
+      { seconds: 94, key: 'tMultiMode' },
+      { seconds: 453, key: 'tOneToOne' },
+      { seconds: 501, key: 'tListenPlay' },
+      { seconds: 553, key: 'tMedia' },
+      { seconds: 611, key: 'tQandAHandheld' },
+      { seconds: 635, key: 'tOffline' },
+      { seconds: 658, key: 'tSpeed' },
+      { seconds: 667, key: 'tExportMinutes' },
+      { seconds: 701, key: 'tUploadLogs' },
+      { seconds: 716, key: 'tSystemUpdate' },
+      { seconds: 746, key: 'tEartips' },
+    ],
+    2: [
+      { seconds: 0, key: 'videoGroupMeeting' },
+      { seconds: 8, key: 'tHost' },
+      { seconds: 94, key: 'tMember' },
+      { seconds: 159, key: 'tPhone' },
+      { seconds: 218, key: 'tComputer' },
+      { seconds: 268, key: 'tMicNotes' },
+      { seconds: 298, key: 'tLangSwitch' },
+      { seconds: 315, key: 'tMeetingSettings' },
+      { seconds: 336, key: 'tKeySettings' },
+    ],
+    7: [
+      { seconds: 1, key: 'tSpeed' },
+      { seconds: 9, key: 'tExportMinutes' },
+      { seconds: 43, key: 'tUploadLogs' },
+      { seconds: 58, key: 'tSystemUpdate' },
+      { seconds: 71, key: 'tFactoryReset' },
+      { seconds: 89, key: 'tEartips' },
+    ],
+  },
 }
 
 const activeTab = ref<TabKey>('video')
@@ -574,9 +763,10 @@ const activeTimelineIndex = computed(() => {
 
 const langLabel = computed(() => languages.find((l) => l.code === currentLang.value)?.label ?? currentLang.value)
 const currentVideo = computed(() => videos.value.find((v) => v.id === currentVideoId.value) ?? videos.value[0])
-const timeline = computed<TimelineItem[]>(() =>
-  (timelineMeta[currentVideoId.value] ?? []).map((it) => ({ seconds: it.seconds, label: t.value[it.key] }))
-)
+const timeline = computed<TimelineItem[]>(() => {
+  const meta = timelineByLang[currentLang.value]?.[currentVideoId.value] ?? timelineMeta[currentVideoId.value]
+  return (meta ?? []).map((it) => ({ seconds: it.seconds, label: t.value[it.key] }))
+})
 const progress = computed(() => (duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0))
 const activeTimelineLabel = computed(() => {
   if (activeTimelineIndex.value < 0) return ''
@@ -927,6 +1117,17 @@ function formatClock(seconds: number): string {
 
 watch([drawerOpen, langDrawerOpen], ([drawer, lang]) => {
   document.body.style.overflow = drawer || lang ? 'hidden' : ''
+})
+
+// 切换语言时，若在视频 tab，重置播放状态（多语言视频切换后重新加载对应视频）
+watch(currentLang, () => {
+  if (activeTab.value !== 'video') return
+  playing.value = false
+  buffering.value = false
+  currentTime.value = 0
+  duration.value = 0
+  speedMenuOpen.value = false
+  fsChaptersOpen.value = false
 })
 
 // 全屏下播放/暂停与进出全屏时，控制条的自动隐藏调度
