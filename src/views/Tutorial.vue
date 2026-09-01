@@ -46,7 +46,10 @@
                 :key="lang.code"
                 :command="lang.code"
               >
-                {{ lang.label }}
+                <div class="lang-opt">
+                  <span class="lang-opt-main">{{ lang.native }}</span>
+                  <span class="lang-opt-sub">{{ lang.names[currentLang] }}</span>
+                </div>
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -72,6 +75,7 @@
           class="video-el"
           :key="currentVideo.url"
           :src="currentVideo.url"
+          :data-video-id="currentVideo.id"
           :poster="posterUrl"
           preload="metadata"
           playsinline
@@ -111,7 +115,7 @@
             </svg>
           </button>
 
-          <div class="progress" ref="progressRef" @click="onSeek">
+          <div class="progress" @pointerdown="onSeekPointerDown" @pointermove="onSeekPointerMove" @pointerup="onSeekPointerEnd" @pointercancel="onSeekPointerEnd">
             <div class="progress-track">
               <div class="progress-played" :style="{ width: progress + '%' }"></div>
               <span class="progress-dot" :style="{ left: progress + '%' }"></span>
@@ -188,7 +192,7 @@
         </aside>
 
         <div v-if="fullscreen" class="fs-controls" :class="{ 'fs-ui-hidden': fsUiHidden }" @click.stop>
-          <div class="fs-progress" ref="fsProgressRef" @click="onFsSeek">
+          <div class="fs-progress" @pointerdown="onSeekPointerDown" @pointermove="onSeekPointerMove" @pointerup="onSeekPointerEnd" @pointercancel="onSeekPointerEnd">
             <div class="fs-progress-track">
               <div class="fs-progress-played" :style="{ width: progress + '%' }"></div>
               <span class="fs-progress-dot" :style="{ left: progress + '%' }"></span>
@@ -342,8 +346,8 @@
             @click="selectLang(lang.code)"
           >
             <div class="lang-item-info">
-              <p class="lang-item-name">{{ lang.label }}</p>
-              <p class="lang-item-sub">{{ lang.zhName }}</p>
+              <p class="lang-item-name">{{ lang.native }}</p>
+              <p class="lang-item-sub">{{ lang.names[currentLang] }}</p>
             </div>
             <svg v-if="lang.code === currentLang" class="lang-check" viewBox="0 0 24 24" width="24" height="24">
               <path d="M5 12l5 5L20 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
@@ -459,13 +463,19 @@ interface VideoMeta {
   durationByLang?: Partial<Record<string, string>>
 }
 
-const languages = [
-  { code: 'zh', label: '中文', zhName: '简体中文' },
-  { code: 'en', label: 'English', zhName: '英语' },
-  { code: 'es', label: 'Español', zhName: '西班牙语' },
-  { code: 'ja', label: '日本語', zhName: '日语' },
-  { code: 'de', label: 'Deutsch', zhName: '德语' },
-] as const
+interface LanguageItem {
+  code: string
+  native: string
+  names: Record<string, string>
+}
+
+const languages: LanguageItem[] = [
+  { code: 'zh', native: '中文', names: { zh: '中文', en: 'Chinese', es: 'Chino', ja: '中国語', de: 'Chinesisch' } },
+  { code: 'en', native: 'English', names: { zh: '英语', en: 'English', es: 'Inglés', ja: '英語', de: 'Englisch' } },
+  { code: 'es', native: 'Español', names: { zh: '西班牙语', en: 'Spanish', es: 'Español', ja: 'スペイン語', de: 'Spanisch' } },
+  { code: 'ja', native: '日本語', names: { zh: '日语', en: 'Japanese', es: 'Japonés', ja: '日本語', de: 'Japanisch' } },
+  { code: 'de', native: 'Deutsch', names: { zh: '德语', en: 'German', es: 'Alemán', ja: 'ドイツ語', de: 'Deutsch' } },
+]
 
 const messages: Record<string, Messages> = {
   zh: { tabVideo: '操作视频', tabManual: '使用手册', directory: '目录', manualEmpty: '暂无内容', helpCenter: '帮助中心', langSelect: '语言选择', chapters: '章节', chapterList: '章节目录', videoOverview: '使用教学汇总', videoGroupMeeting: '多人会议模式', videoTwoPerson: '双人对话模式', videoListen: '旁听翻译模式', videoHandheld: '手持翻译模式', videoCall: '通话/视频翻译模式', videoOther: '其他', tUnbox: '开箱', tActivate: '激活', tOffline: '离线翻译模式', tSpeed: '翻译速度调整', tExportMinutes: '导出会议纪要', tUploadLogs: '上传日志', tSystemUpdate: '系统和耳机升级', tFactoryReset: '恢复出厂设置', tEartips: '耳套和耳挂', tMultiMode: '多模式翻译', tOneToOne: '一对一翻译模式', tListenPlay: '聆听与播放翻译模式', tMedia: '媒体翻译模式', tQandAHandheld: '问答与手持翻译模式', tHost: '主持人端操作', tMember: '成员端操作', tPhone: '手机端操作', tComputer: '电脑端操作', tMicNotes: '耳机收音注意事项', tLangSwitch: '语种切换说明', tMeetingSettings: '主持人-会议设置讲解', tKeySettings: '主持人-关键设置开关说明' },
@@ -480,7 +490,7 @@ const getDefaultLang = (): string => {
   if (messages[lang]) return lang
   const prefix = lang.split('-')[0]
   if (messages[prefix]) return prefix
-  return 'zh'
+  return 'en'
 }
 
 const currentLang = ref<string>(getDefaultLang())
@@ -718,7 +728,7 @@ const currentVideoId = ref<number>(videoMeta[0].id)
 
 const videoRef = ref<HTMLVideoElement | null>(null)
 const videoPlayerRef = ref<HTMLDivElement | null>(null)
-const progressRef = ref<HTMLDivElement | null>(null)
+const seeking = ref(false)
 const playing = ref(false)
 const buffering = ref(false)
 const isHovering = ref(false)
@@ -732,7 +742,6 @@ const fullscreen = ref(false)
 // iOS / 部分内置浏览器不支持元素级 requestFullscreen，改用 CSS 假全屏（自定义 UI + 横屏旋转）
 const cssFullscreen = ref(false)
 const fsChaptersOpen = ref(false)
-const fsProgressRef = ref<HTMLDivElement | null>(null)
 const drawerOpen = ref(false)
 const drawerTop = ref(0)
 const langDrawerOpen = ref(false)
@@ -761,7 +770,7 @@ const activeTimelineIndex = computed(() => {
   return idx
 })
 
-const langLabel = computed(() => languages.find((l) => l.code === currentLang.value)?.label ?? currentLang.value)
+const langLabel = computed(() => languages.find((l) => l.code === currentLang.value)?.native ?? currentLang.value)
 const currentVideo = computed(() => videos.value.find((v) => v.id === currentVideoId.value) ?? videos.value[0])
 const timeline = computed<TimelineItem[]>(() => {
   const meta = timelineByLang[currentLang.value]?.[currentVideoId.value] ?? timelineMeta[currentVideoId.value]
@@ -970,36 +979,58 @@ function onTimeUpdate() {
   if (videoRef.value) currentTime.value = videoRef.value.currentTime
 }
 
-function onLoadedMetadata() {
+function onLoadedMetadata(e: Event) {
+  const v = e.target as HTMLVideoElement
+  if (!v) return
   if (videoRef.value) duration.value = videoRef.value.duration
-  if (shouldAutoplay.value) {
-    shouldAutoplay.value = false
-    const v = videoRef.value
-    if (v) {
-      v.playbackRate = parseFloat(speed.value)
-      v.play().catch((e) => console.warn('自动播放失败:', e))
-    }
-  }
+  // 仅当事件来自当前选中的视频时才自动播放，
+  // 避免快速切换目录时旧视频的 loadedmetadata 抢占 shouldAutoplay 标志，导致最终视频停在开始处不播放
+  if (!shouldAutoplay.value) return
+  if (Number(v.dataset.videoId) !== currentVideoId.value) return
+  shouldAutoplay.value = false
+  v.playbackRate = parseFloat(speed.value)
+  v.play().catch((err) => console.warn('自动播放失败:', err))
 }
 
-function onSeek(e: MouseEvent) {
-  const bar = progressRef.value
-  const v = videoRef.value
-  if (!bar || !v || !duration.value) return
+// 进度条点击/拖拽 seek：统一用 pointer 事件，按下即跳转，按住拖动时连续更新。
+// CSS 假全屏竖屏下播放器被 rotate(90deg) 旋转，进度方向映射到屏幕纵向（Y 轴），
+// 此时 getBoundingClientRect 的宽高已互换，需按 clientY 计算，否则会跳错甚至回退。
+function seekRatioFromPointer(e: PointerEvent, bar: HTMLElement): number {
   const rect = bar.getBoundingClientRect()
-  const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1)
+  const rotated = cssFullscreen.value && window.matchMedia('(orientation: portrait)').matches
+  return rotated
+    ? Math.min(Math.max((e.clientY - rect.top) / rect.height, 0), 1)
+    : Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1)
+}
+
+function applySeekRatio(ratio: number) {
+  const v = videoRef.value
+  if (!v || !duration.value) return
   v.currentTime = ratio * duration.value
   currentTime.value = v.currentTime
 }
 
-function onFsSeek(e: MouseEvent) {
-  const bar = fsProgressRef.value
-  const v = videoRef.value
-  if (!bar || !v || !duration.value) return
-  const rect = bar.getBoundingClientRect()
-  const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1)
-  v.currentTime = ratio * duration.value
-  currentTime.value = v.currentTime
+function onSeekPointerDown(e: PointerEvent) {
+  const bar = e.currentTarget as HTMLElement
+  if (!bar || !duration.value) return
+  try { bar.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+  seeking.value = true
+  applySeekRatio(seekRatioFromPointer(e, bar))
+}
+
+function onSeekPointerMove(e: PointerEvent) {
+  if (!seeking.value) return
+  const bar = e.currentTarget as HTMLElement
+  if (!bar) return
+  applySeekRatio(seekRatioFromPointer(e, bar))
+}
+
+function onSeekPointerEnd(e: PointerEvent) {
+  const bar = e.currentTarget as HTMLElement
+  try {
+    if (bar && bar.hasPointerCapture(e.pointerId)) bar.releasePointerCapture(e.pointerId)
+  } catch { /* ignore */ }
+  seeking.value = false
 }
 
 function toggleFsChapters() {
@@ -1052,7 +1083,7 @@ function revealFsUi() {
 function scheduleFsUiHide() {
   if (fsUiHideTimer !== null) clearTimeout(fsUiHideTimer)
   fsUiHideTimer = window.setTimeout(() => {
-    if (playing.value && !speedMenuOpen.value && !fsChaptersOpen.value) {
+    if (playing.value && !speedMenuOpen.value && !fsChaptersOpen.value && !seeking.value) {
       fsUiHidden.value = true
     }
     fsUiHideTimer = null
@@ -1074,7 +1105,7 @@ function revealControls() {
 function scheduleControlsHide() {
   clearControlsHideTimer()
   controlsHideTimer = window.setTimeout(() => {
-    if (playing.value && isSmallScreen.value && !fullscreen.value && !speedMenuOpen.value) {
+    if (playing.value && isSmallScreen.value && !fullscreen.value && !speedMenuOpen.value && !seeking.value) {
       controlsHidden.value = true
     }
     controlsHideTimer = null
@@ -1290,6 +1321,24 @@ onBeforeUnmount(() => {
   color: #0A85FF;
 }
 
+/* 语言下拉项：上行为浏览器语言下的语种名，下行为该语种自身名称 */
+.lang-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.35;
+}
+
+.lang-opt-main {
+  font-size: 14px;
+  color: #191d26;
+}
+
+.lang-opt-sub {
+  font-size: 12px;
+  color: #a1a7b2;
+}
+
 /* ---------- 视频播放器 ---------- */
 .video-tab {
   display: flex;
@@ -1475,6 +1524,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   cursor: pointer;
+  touch-action: none;
 }
 
 .progress-track {
@@ -1641,7 +1691,12 @@ onBeforeUnmount(() => {
 }
 
 .fs-chapter.active {
-  background: rgba(255, 255, 255, 0.15);
+  background: #ffffff;
+  color: #000000;
+}
+
+.fs-chapter.active .fs-chapter-play {
+  color: #000000;
 }
 
 .fs-chapter-time {
@@ -1687,6 +1742,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   cursor: pointer;
+  touch-action: none;
   /* margin-bottom: 8px; */
 }
 
