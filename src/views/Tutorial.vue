@@ -363,7 +363,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import sensors from '../plugins/sensors'
+import { track } from '../plugins/sensors'
 import posterUrl from '../assets/tutorial/video-poster.svg'
 import iconLight from '../assets/icon_light.svg'
 import iconGroup from '../assets/icon_group.svg'
@@ -800,34 +800,45 @@ const videoChineseName = (id: number): string => {
 function trackLanguageSelection(code: string) {
   const lang = languages.find((l) => l.code === code)
   if (!lang) return
-  sensors.track('X1ProHelpSite_SystemLanguageSelection', {
+  track('X1ProHelpSite_SystemLanguageSelection', {
     SelectLanguage: lang.native,
   })
 }
 
-// 视频播放时长统计（秒）：仅累计处于播放状态的时间，排除暂停
+// 视频播放时长统计（秒）：累计「视频内容进度时长」——
+// 用 video.currentTime 差值累加，倍速播放按实际走过的内容时长计（2x 放 10s = 20s），
+// 暂停时进度不动、差值自然为 0，天然排除暂停时间
 let accumulatedPlaySeconds = 0
-let playStartTs: number | null = null
+// 本次播放起点对应的视频内容时间(currentTime)，null 表示当前未在累计
+let playStartVideoTime: number | null = null
+
+// 结算当前播放段：把「起点 → 现在」的视频内容时长累加到累计值，不重置累计值
+function settlePlaySegment() {
+  if (playStartVideoTime !== null) {
+    const now = videoRef.value?.currentTime ?? currentTime.value
+    accumulatedPlaySeconds += now - playStartVideoTime
+    playStartVideoTime = null
+  }
+}
 
 function onVideoPlay() {
   playing.value = true
-  if (playStartTs === null) playStartTs = performance.now()
+  if (playStartVideoTime === null) {
+    playStartVideoTime = videoRef.value?.currentTime ?? currentTime.value
+  }
 }
 
 function onVideoPause() {
   playing.value = false
-  if (playStartTs !== null) {
-    accumulatedPlaySeconds += (performance.now() - playStartTs) / 1000
-    playStartTs = null
-  }
+  settlePlaySegment()
 }
 
 function reportPlayDuration() {
   const seconds = Math.round(accumulatedPlaySeconds)
   accumulatedPlaySeconds = 0
-  playStartTs = null
+  playStartVideoTime = null
   if (seconds < 1) return
-  sensors.track('X1ProHelpSite_VideoPlayDuration', {
+  track('X1ProHelpSite_VideoPlayDuration', {
     VideoName: videoChineseName(currentVideoId.value),
     PlayDuration: seconds,
   })
@@ -835,10 +846,7 @@ function reportPlayDuration() {
 
 // 播放结束 / 切视频 / 切 Tab / 离开页面时结算并上报本次播放时长
 function settlePlayDuration() {
-  if (playStartTs !== null) {
-    accumulatedPlaySeconds += (performance.now() - playStartTs) / 1000
-    playStartTs = null
-  }
+  settlePlaySegment()
   reportPlayDuration()
 }
 
@@ -856,7 +864,7 @@ function switchTab(tab: TabKey) {
   clearDrawerCloseTimer()
   drawerOpen.value = false
   // Tab 点击埋点（默认选中的 Tab 不触发：switchTab 仅在用户点击时被调用）
-  sensors.track('X1ProHelpSite_TabClick', {
+  track('X1ProHelpSite_TabClick', {
     TabName: tab === 'video' ? messages.zh.tabVideo : messages.zh.tabManual,
   })
 }
@@ -880,7 +888,7 @@ function selectVideo(id: number) {
   fsChaptersOpen.value = false
   shouldAutoplay.value = true
   // 视频点击埋点
-  sensors.track('X1ProHelpSite_VideoClick', {
+  track('X1ProHelpSite_VideoClick', {
     VideoName: videoChineseName(id),
   })
   // 移动端小屏：点击目录项后延迟 1s 再收起目录抽屉
@@ -956,12 +964,18 @@ function playAt(index: number) {
   if (!item) return
   const v = videoRef.value
   if (!v) return
+  // 跳转前先结算当前播放段：章节跳转属于「离开当前进度」，跳变距离不计入播放时长
+  settlePlaySegment()
   v.currentTime = item.seconds
   currentTime.value = item.seconds
+  if (!v.paused) {
+    // 此前已在播放时，play() 不会重复触发 play 事件，手动以跳转后位置续上起点
+    playStartVideoTime = item.seconds
+  }
   v.playbackRate = parseFloat(speed.value)
   v.play().catch((e) => console.warn('视频播放失败:', e))
   // 章节点击埋点（playFsChapter 内部也调用 playAt，会一并触发，无需重复埋）
-  sensors.track('X1ProHelpSite_ChapterClick', {
+  track('X1ProHelpSite_ChapterClick', {
     VideoName: videoChineseName(currentVideoId.value),
     ChapterName: messages.zh[item.key],
   })
@@ -1096,6 +1110,8 @@ function onSeekPointerDown(e: PointerEvent) {
   const bar = e.currentTarget as HTMLElement
   if (!bar || !duration.value) return
   try { bar.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+  // 开始拖动前结算当前播放段：拖动导致的进度跳变不计入播放时长
+  settlePlaySegment()
   seeking.value = true
   applySeekRatio(seekRatioFromPointer(e, bar))
 }
@@ -1113,6 +1129,11 @@ function onSeekPointerEnd(e: PointerEvent) {
     if (bar && bar.hasPointerCapture(e.pointerId)) bar.releasePointerCapture(e.pointerId)
   } catch { /* ignore */ }
   seeking.value = false
+  // 拖动结束：若视频仍在播放，从当前位置重新开始累计（seek 不触发 play 事件，需手动续起点）
+  const v = videoRef.value
+  if (v && !v.paused) {
+    playStartVideoTime = v.currentTime
+  }
 }
 
 function toggleFsChapters() {
@@ -1235,6 +1256,8 @@ watch([drawerOpen, langDrawerOpen], ([drawer, lang]) => {
 // 切换语言时，若在视频 tab，重置播放状态（多语言视频切换后重新加载对应视频）
 watch(currentLang, () => {
   if (activeTab.value !== 'video') return
+  // 切换语言会重新加载对应语言视频，先结算当前播放段
+  settlePlaySegment()
   playing.value = false
   buffering.value = false
   currentTime.value = 0
