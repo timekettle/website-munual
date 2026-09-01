@@ -1006,7 +1006,18 @@ async function toggleFullscreen() {
     try {
       await el.requestFullscreen()
       // 进入全屏后锁定横屏，小屏默认横向展示
-      await lockLandscape()
+      const locked = await lockLandscape()
+      // 原生全屏成功但无法锁定横屏（如鸿蒙内置浏览器）且是小屏时，
+      // 退出原生全屏改用 CSS 假全屏（CSS 旋转模拟横屏），避免出现「竖着的全屏」
+      if (!locked && isSmallScreen.value) {
+        console.warn('锁横屏失败，回退到 CSS 假全屏模拟横屏')
+        enterCssFullscreen()
+        try {
+          await document.exitFullscreen()
+        } catch {
+          /* ignore */
+        }
+      }
     } catch (e) {
       console.warn('进入全屏失败:', e)
     }
@@ -1027,24 +1038,46 @@ async function toggleFullscreen() {
 function enterCssFullscreen() {
   cssFullscreen.value = true
   fullscreen.value = true
+  // 拦截系统返回键：push 一个占位 history，用户按返回键时触发 popstate 退出全屏，
+  // 而不是直接离开页面（鸿蒙/微信等内核下页面内「返回」按钮可能因 rotate 点击失效）
+  try {
+    history.pushState({ cssFullscreen: true }, '')
+    window.addEventListener('popstate', onCssFullscreenPopstate)
+  } catch {
+    /* 忽略：不支持 history API 时仅依赖页面内退出按钮 */
+  }
+}
+
+function onCssFullscreenPopstate() {
+  if (cssFullscreen.value) {
+    exitCssFullscreen()
+  }
 }
 
 function exitCssFullscreen() {
   cssFullscreen.value = false
   fullscreen.value = false
+  window.removeEventListener('popstate', onCssFullscreenPopstate)
+  // 清理进入全屏时 push 的占位 history，避免之后按返回键再回退一次
+  if (history.state && history.state.cssFullscreen) {
+    history.back()
+  }
 }
 
-// 锁定横屏（仅在全屏状态下生效；浏览器不支持时静默忽略）
-async function lockLandscape() {
+// 锁定横屏（仅在全屏状态下生效）；返回是否成功锁定，供调用方决定是否回退 CSS 假全屏
+async function lockLandscape(): Promise<boolean> {
   const so = screen.orientation
-  if (!so || typeof so.lock !== 'function') return
+  if (!so || typeof so.lock !== 'function') return false
   try {
     await so.lock('landscape')
+    return true
   } catch {
     try {
       await so.lock('landscape-primary')
+      return true
     } catch (err) {
       console.warn('锁定横屏失败:', err)
+      return false
     }
   }
 }
@@ -1325,6 +1358,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   window.removeEventListener('resize', onWindowResize)
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('popstate', onCssFullscreenPopstate)
   document.body.style.overflow = ''
   clearDrawerCloseTimer()
   clearFsChaptersCloseTimer()
