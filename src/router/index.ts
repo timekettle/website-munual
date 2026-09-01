@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import sensors from '../plugins/sensors'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -15,6 +16,11 @@ const router = createRouter({
       component: () => import('../views/PdfViewer.vue'),
     },
   ],
+})
+
+// 页面浏览埋点：访问任意页面时触发（含首次进入）
+router.afterEach(() => {
+  sensors.track('X1ProHelpSite_PageView')
 })
 
 export default router

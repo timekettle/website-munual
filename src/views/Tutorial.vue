@@ -80,9 +80,9 @@
           preload="metadata"
           playsinline
           @click="togglePlay"
-          @play="playing = true"
-          @pause="playing = false"
-          @ended="playing = false"
+          @play="onVideoPlay"
+          @pause="onVideoPause"
+          @ended="onVideoEnded"
           @waiting="buffering = true"
           @playing="buffering = false"
           @canplay="buffering = false"
@@ -363,6 +363,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import sensors from '../plugins/sensors'
 import posterUrl from '../assets/tutorial/video-poster.svg'
 import iconLight from '../assets/icon_light.svg'
 import iconGroup from '../assets/icon_group.svg'
@@ -401,6 +402,7 @@ interface VideoItem {
 interface TimelineItem {
   seconds: number
   label: string
+  key: MsgKey
 }
 
 interface Messages {
@@ -774,7 +776,7 @@ const langLabel = computed(() => languages.find((l) => l.code === currentLang.va
 const currentVideo = computed(() => videos.value.find((v) => v.id === currentVideoId.value) ?? videos.value[0])
 const timeline = computed<TimelineItem[]>(() => {
   const meta = timelineByLang[currentLang.value]?.[currentVideoId.value] ?? timelineMeta[currentVideoId.value]
-  return (meta ?? []).map((it) => ({ seconds: it.seconds, label: t.value[it.key] }))
+  return (meta ?? []).map((it) => ({ seconds: it.seconds, label: t.value[it.key], key: it.key }))
 })
 const progress = computed(() => (duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0))
 const activeTimelineLabel = computed(() => {
@@ -788,17 +790,87 @@ const controlsHiddenEffect = computed(() =>
   isSmallScreen.value ? controlsHidden.value : playing.value && !isHovering.value
 )
 
+// ===== 神策埋点 =====
+// 埋点属性值统一用「中文名」上报，与界面语言无关，保证后台数据跨语言一致
+const videoChineseName = (id: number): string => {
+  const meta = videoMeta.find((m) => m.id === id)
+  return meta ? messages.zh[meta.titleKey] : ''
+}
+
+function trackLanguageSelection(code: string) {
+  const lang = languages.find((l) => l.code === code)
+  if (!lang) return
+  sensors.track('X1ProHelpSite_SystemLanguageSelection', {
+    SelectLanguage: lang.native,
+  })
+}
+
+// 视频播放时长统计（秒）：仅累计处于播放状态的时间，排除暂停
+let accumulatedPlaySeconds = 0
+let playStartTs: number | null = null
+
+function onVideoPlay() {
+  playing.value = true
+  if (playStartTs === null) playStartTs = performance.now()
+}
+
+function onVideoPause() {
+  playing.value = false
+  if (playStartTs !== null) {
+    accumulatedPlaySeconds += (performance.now() - playStartTs) / 1000
+    playStartTs = null
+  }
+}
+
+function reportPlayDuration() {
+  const seconds = Math.round(accumulatedPlaySeconds)
+  accumulatedPlaySeconds = 0
+  playStartTs = null
+  if (seconds < 1) return
+  sensors.track('X1ProHelpSite_VideoPlayDuration', {
+    VideoName: videoChineseName(currentVideoId.value),
+    PlayDuration: seconds,
+  })
+}
+
+// 播放结束 / 切视频 / 切 Tab / 离开页面时结算并上报本次播放时长
+function settlePlayDuration() {
+  if (playStartTs !== null) {
+    accumulatedPlaySeconds += (performance.now() - playStartTs) / 1000
+    playStartTs = null
+  }
+  reportPlayDuration()
+}
+
+function onVideoEnded() {
+  playing.value = false
+  settlePlayDuration()
+}
+
 function switchTab(tab: TabKey) {
+  // 切走视频 Tab 时结算本次播放时长
+  if (tab === 'manual' && activeTab.value === 'video') {
+    settlePlayDuration()
+  }
   activeTab.value = tab
   clearDrawerCloseTimer()
   drawerOpen.value = false
+  // Tab 点击埋点（默认选中的 Tab 不触发：switchTab 仅在用户点击时被调用）
+  sensors.track('X1ProHelpSite_TabClick', {
+    TabName: tab === 'video' ? messages.zh.tabVideo : messages.zh.tabManual,
+  })
 }
 
 function onLangChange(code: string) {
   currentLang.value = code
+  trackLanguageSelection(code)
 }
 
 function selectVideo(id: number) {
+  // 切换到不同视频前，结算上一个视频的播放时长
+  if (currentVideoId.value !== id) {
+    settlePlayDuration()
+  }
   currentVideoId.value = id
   playing.value = false
   buffering.value = false
@@ -807,6 +879,10 @@ function selectVideo(id: number) {
   speedMenuOpen.value = false
   fsChaptersOpen.value = false
   shouldAutoplay.value = true
+  // 视频点击埋点
+  sensors.track('X1ProHelpSite_VideoClick', {
+    VideoName: videoChineseName(id),
+  })
   // 移动端小屏：点击目录项后延迟 1s 再收起目录抽屉
   clearDrawerCloseTimer()
   drawerCloseTimer = window.setTimeout(() => {
@@ -849,6 +925,7 @@ function onLangDropdownVisible(visible: boolean) {
 function selectLang(code: string) {
   currentLang.value = code
   langDrawerOpen.value = false
+  trackLanguageSelection(code)
 }
 
 async function togglePlay() {
@@ -883,6 +960,11 @@ function playAt(index: number) {
   currentTime.value = item.seconds
   v.playbackRate = parseFloat(speed.value)
   v.play().catch((e) => console.warn('视频播放失败:', e))
+  // 章节点击埋点（playFsChapter 内部也调用 playAt，会一并触发，无需重复埋）
+  sensors.track('X1ProHelpSite_ChapterClick', {
+    VideoName: videoChineseName(currentVideoId.value),
+    ChapterName: messages.zh[item.key],
+  })
 }
 
 async function toggleFullscreen() {
@@ -1216,6 +1298,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  settlePlayDuration()
   document.removeEventListener('fullscreenchange', onFullscreenChange)
   window.removeEventListener('resize', onWindowResize)
   window.removeEventListener('keydown', onKeydown)

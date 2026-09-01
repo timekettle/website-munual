@@ -55,6 +55,7 @@
 <script lang="ts" setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, reactive } from 'vue'
 import { useRoute } from 'vue-router'
+import sensors from '../plugins/sensors'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 
@@ -89,6 +90,7 @@ const isWechat = () => /MicroMessenger/i.test(navigator.userAgent)
 const downloadPdf = async () => {
   if (isWechat()) {
     window.location.href = pdfUrl
+    sensors.track('X1ProHelpSite_ManualDownload')
     return
   }
   const res = await fetch(pdfUrl)
@@ -100,6 +102,8 @@ const downloadPdf = async () => {
   a.style.display = 'none'
   document.body.appendChild(a)
   a.click()
+  // 下载成功发起时埋点
+  sensors.track('X1ProHelpSite_ManualDownload')
   setTimeout(() => {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
