@@ -10,8 +10,10 @@ if (serverUrl) {
     // 故关闭 SDK 默认的 $pageview 自动采集，避免重复统计
     // 使用客户端时间，避免设备时区偏差
     use_client_time: true,
-    // 使用 beacon 发送（不支持时自动降级），页面卸载也能上报
-    send_type: 'beacon',
+    // 使用默认 ajax 发送。
+    // 不要全局用 'beacon'：sendBeacon 发后不管、无重试、低优先级，频繁埋点会在真机上被静默丢弃，
+    // 导致「实机触发数 > 神策后台接收数」。SPA 内切路由/切组件时页面仍在，XHR 足以送达。
+    send_type: 'ajax',
     // 关闭神策 SDK 自带的 web-sdk-log 日志（改用下方 track 里的中文日志）
     show_log: false,
     heatmap: {

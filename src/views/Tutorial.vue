@@ -69,7 +69,7 @@
     <main v-if="activeTab === 'video'" class="video-tab">
       <div class="video-main">
       <!-- 视频播放器（自定义控制条：无音量，含倍速与全屏） -->
-      <div class="video-player" :class="{ 'css-fullscreen': cssFullscreen }" ref="videoPlayerRef" @mouseenter="isHovering = true" @mouseleave="isHovering = false" @mousemove="onPlayerMove" @touchstart="onPlayerTouch" @touchmove="onPlayerTouch">
+      <div class="video-player" :class="{ 'css-fullscreen': cssFullscreen, 'css-fullscreen-exiting': cssFullscreenExiting }" ref="videoPlayerRef" @mouseenter="isHovering = true" @mouseleave="isHovering = false" @mousemove="onPlayerMove" @touchstart="onPlayerTouch" @touchmove="onPlayerTouch">
         <video
           ref="videoRef"
           class="video-el"
@@ -744,6 +744,9 @@ const speeds = ['0.75x', '1.0x', '1.25x', '1.5x', '2.0x']
 const fullscreen = ref(false)
 // iOS / 部分内置浏览器不支持元素级 requestFullscreen，改用 CSS 假全屏（自定义 UI + 横屏旋转）
 const cssFullscreen = ref(false)
+// 退出 CSS 假全屏时的过渡态：先播放「淡出 + 缩小」动画，动画结束后再真正移除全屏状态
+const cssFullscreenExiting = ref(false)
+let cssFullscreenExitTimer: number | null = null
 const fsChaptersOpen = ref(false)
 const drawerOpen = ref(false)
 const drawerTop = ref(0)
@@ -897,7 +900,7 @@ function selectVideo(id: number) {
   drawerCloseTimer = window.setTimeout(() => {
     drawerOpen.value = false
     drawerCloseTimer = null
-  }, 1000)
+  }, 100)
 }
 
 function computeDrawerTop() {
@@ -1045,13 +1048,21 @@ function onCssFullscreenPopstate() {
 }
 
 function exitCssFullscreen() {
-  cssFullscreen.value = false
-  fullscreen.value = false
-  window.removeEventListener('popstate', onCssFullscreenPopstate)
-  // 清理进入全屏时 push 的占位 history，避免之后按返回键再回退一次
-  if (history.state && history.state.cssFullscreen) {
-    history.back()
-  }
+  // 退出动画播放中，忽略重复触发
+  if (cssFullscreenExiting.value) return
+  cssFullscreenExiting.value = true
+  // 先播放「淡出 + 缩小」退出动画（横屏 → 竖屏），动画结束后再真正移除全屏状态
+  cssFullscreenExitTimer = window.setTimeout(() => {
+    cssFullscreen.value = false
+    fullscreen.value = false
+    cssFullscreenExiting.value = false
+    cssFullscreenExitTimer = null
+    window.removeEventListener('popstate', onCssFullscreenPopstate)
+    // 清理进入全屏时 push 的占位 history，避免之后按返回键再回退一次
+    if (history.state && history.state.cssFullscreen) {
+      history.back()
+    }
+  }, 320)
 }
 
 // 锁定横屏（桌面端原生全屏时调用；浏览器不支持时静默忽略）
@@ -1168,7 +1179,7 @@ function playFsChapter(index: number) {
   fsChaptersCloseTimer = window.setTimeout(() => {
     fsChaptersOpen.value = false
     fsChaptersCloseTimer = null
-  }, 1000)
+  }, 100)
 }
 
 function toggleSpeedMenu() {
@@ -1354,6 +1365,10 @@ onBeforeUnmount(() => {
   clearFsChaptersCloseTimer()
   clearFsUiHideTimer()
   clearControlsHideTimer()
+  if (cssFullscreenExitTimer !== null) {
+    clearTimeout(cssFullscreenExitTimer)
+    cssFullscreenExitTimer = null
+  }
 })
 </script>
 
@@ -1513,6 +1528,8 @@ onBeforeUnmount(() => {
   max-width: none;
   aspect-ratio: auto;
   background: #000000;
+  /* 进入全屏时淡入，缓解竖屏→横屏的突兀切换（横屏方向，无旋转） */
+  animation: fs-fade-in 0.3s ease-out;
 }
 
 /* 横屏：自然铺满，不旋转 */
@@ -1525,7 +1542,8 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 竖屏：宽高互换并旋转 90°，旋转后恰好填满竖屏视口 */
+/* 竖屏：宽高互换并旋转 90°，旋转后恰好填满竖屏视口。
+   进入时从略小的尺寸放大 + 淡入，让「点全屏变横屏」的切换更平滑。 */
 @media (orientation: portrait) {
   .video-player.css-fullscreen {
     width: 100vh;
@@ -1534,7 +1552,56 @@ onBeforeUnmount(() => {
     height: 100dvw;
     transform: rotate(90deg) translateY(-100%);
     transform-origin: top left;
+    animation: fs-enter-rotate 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
   }
+}
+
+/* 全屏进入动画：淡入（横屏方向） */
+@keyframes fs-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* 全屏进入动画：淡入 + 轻微放大（竖屏方向，旋转状态保持不变避免旋转过程中方向错乱） */
+@keyframes fs-enter-rotate {
+  from {
+    opacity: 0;
+    transform: rotate(90deg) translateY(-100%) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(90deg) translateY(-100%) scale(1);
+  }
+}
+
+/* 退出全屏（横屏 → 竖屏）：缩小 + 淡出，与进入动画反向，让退出切换同样平滑。
+   退出态仍保留 .css-fullscreen 以维持固定定位与旋转，动画结束后再由脚本移除全屏状态。 */
+@media (orientation: portrait) {
+  .video-player.css-fullscreen.css-fullscreen-exiting {
+    animation: fs-exit-rotate 0.3s ease-in forwards;
+  }
+}
+
+@media (orientation: landscape) {
+  .video-player.css-fullscreen.css-fullscreen-exiting {
+    animation: fs-fade-out 0.3s ease-in forwards;
+  }
+}
+
+@keyframes fs-exit-rotate {
+  from {
+    opacity: 1;
+    transform: rotate(90deg) translateY(-100%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: rotate(90deg) translateY(-100%) scale(0.85);
+  }
+}
+
+@keyframes fs-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 
 .video-player.css-fullscreen .video-el,
@@ -1641,6 +1708,8 @@ onBeforeUnmount(() => {
   justify-content: center;
   width: 28px;
   height: 28px;
+  padding: 0;
+  box-sizing: border-box;
   border: none;
   background: transparent;
   color: #ffffff;
@@ -2378,9 +2447,13 @@ onBeforeUnmount(() => {
   opacity: 0;
 }
 
-.drawer-slide-enter-active,
+.drawer-slide-enter-active {
+  transition: transform 0.28s ease-out;
+}
+
+/* 弹窗移下（收起）时速度由快到慢，视觉上更柔和 */
 .drawer-slide-leave-active {
-  transition: transform 0.28s ease;
+  transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .drawer-slide-enter-from,
@@ -2598,6 +2671,38 @@ onBeforeUnmount(() => {
   .video-player {
     max-width: 620px;
     margin: 0 auto;
+  }
+}
+
+/* ---------- 移动端（iPhone 等小屏）：加大控制条播放/全屏按钮 ----------
+   原因：底部控制条按钮原先为 28×28 点击区域 + 18×18 图标，低于 iOS 推荐的 44pt
+   最小触控目标，且固定像素在部分（尤其大屏）机型上观感偏小。此处放大按钮与图标、
+   并抬高控制条，保证可点性与视觉一致。 */
+@media (max-width: 768px) {
+  .video-controls {
+    height: 48px;
+    padding: 0 8px;
+    gap: 8px;
+  }
+
+  .ctrl-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .ctrl-btn svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .progress {
+    height: 40px;
+  }
+
+  .speed-btn {
+    height: 30px;
+    min-width: 44px;
+    font-size: 13px;
   }
 }
 </style>
