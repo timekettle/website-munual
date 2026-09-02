@@ -2592,4 +2592,12 @@ onBeforeUnmount(() => {
     display: none;
   }
 }
+
+/* ---------- 电脑小屏（桌面端但窗口较窄）：适当缩小视频区域，避免挤压下方时间线 ---------- */
+@media (min-width: 769px) and (max-width: 1366px) {
+  .video-player {
+    max-width: 620px;
+    margin: 0 auto;
+  }
+}
 </style>
