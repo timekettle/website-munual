@@ -388,6 +388,7 @@ import logoUrl from '../assets/tutorial/logo.svg'
 import directoryIconUrl from '../assets/tutorial/icon_directory.svg'
 import langIconUrl from '../assets/tutorial/icon_lang.svg'
 import PdfViewer from './PdfViewer.vue'
+import { applyDocumentTitle } from '../i18n'
 
 type TabKey = 'video' | 'manual'
 
@@ -1271,6 +1272,9 @@ function formatClock(seconds: number): string {
 watch([drawerOpen, langDrawerOpen], ([drawer, lang]) => {
   document.body.style.overflow = drawer || lang ? 'hidden' : ''
 })
+
+// 切换语言时同步更新页面标题
+watch(currentLang, (lang) => applyDocumentTitle(lang))
 
 // 切换语言时，若在视频 tab，重置播放状态（多语言视频切换后重新加载对应视频）
 watch(currentLang, () => {

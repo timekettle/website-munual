@@ -47,8 +47,11 @@ const PROPERTY_LABELS: Record<string, string> = {
 }
 
 // 统一埋点入口：开发环境打印「英文变量名 + 中文显示名」日志便于验证触发，再调用 SDK track
+// 测试等非 dev 环境如需看日志，在构建环境注入 VITE_ENABLE_TRACK_LOG=true 即可
+const showTrackLog = import.meta.env.DEV || import.meta.env.VITE_ENABLE_TRACK_LOG === 'true'
+
 export function track(eventName: string, properties?: Record<string, any>) {
-  if (import.meta.env.DEV) {
+  if (showTrackLog) {
     const eventLabel = EVENT_LABELS[eventName] ?? eventName
     // 事件：英文变量名（中文显示名），未命中映射时只显示英文变量名
     const eventDisplay = eventLabel === eventName ? eventName : `${eventName}（${eventLabel}）`
