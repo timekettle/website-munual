@@ -1001,33 +1001,22 @@ async function toggleFullscreen() {
     return
   }
 
-  // 标准 Fullscreen API（桌面端 / 多数 Android 浏览器）
-  if (typeof el.requestFullscreen === 'function') {
-    try {
-      await el.requestFullscreen()
-      // 进入全屏后锁定横屏，小屏默认横向展示
-      const locked = await lockLandscape()
-      // 原生全屏成功但无法锁定横屏（如鸿蒙内置浏览器）且是小屏时，
-      // 退出原生全屏改用 CSS 假全屏（CSS 旋转模拟横屏），避免出现「竖着的全屏」
-      if (!locked && isSmallScreen.value) {
-        console.warn('锁横屏失败，回退到 CSS 假全屏模拟横屏')
-        enterCssFullscreen()
-        try {
-          await document.exitFullscreen()
-        } catch {
-          /* ignore */
-        }
-      }
-    } catch (e) {
-      console.warn('进入全屏失败:', e)
-    }
+  // 小屏移动端：统一走 CSS 假全屏（rotate 模拟横屏）。
+  // 不依赖系统方向锁定，避免 iOS/鸿蒙/微信等内核下原生全屏 + orientation lock 的兼容性问题，
+  // 也避免「先进原生全屏（竖屏）→ 锁失败 → 退出再切 CSS 假全屏」造成的竖屏→横屏闪动。
+  if (isSmallScreen.value) {
+    enterCssFullscreen()
     return
   }
 
-  // 小屏（iOS / 部分内置浏览器）：元素不支持 requestFullscreen，改用 CSS 假全屏。
-  // 不依赖原生全屏，未播放时也能进入，且展示的是自定义 UI 而非系统默认播放器。
-  if (isSmallScreen.value) {
-    enterCssFullscreen()
+  // 桌面端：标准 Fullscreen API（桌面浏览器对 requestFullscreen / orientation lock 支持较一致）
+  if (typeof el.requestFullscreen === 'function') {
+    try {
+      await el.requestFullscreen()
+      await lockLandscape()
+    } catch (e) {
+      console.warn('进入全屏失败:', e)
+    }
     return
   }
 
@@ -1064,20 +1053,17 @@ function exitCssFullscreen() {
   }
 }
 
-// 锁定横屏（仅在全屏状态下生效）；返回是否成功锁定，供调用方决定是否回退 CSS 假全屏
-async function lockLandscape(): Promise<boolean> {
+// 锁定横屏（桌面端原生全屏时调用；浏览器不支持时静默忽略）
+async function lockLandscape() {
   const so = screen.orientation
-  if (!so || typeof so.lock !== 'function') return false
+  if (!so || typeof so.lock !== 'function') return
   try {
     await so.lock('landscape')
-    return true
   } catch {
     try {
       await so.lock('landscape-primary')
-      return true
     } catch (err) {
       console.warn('锁定横屏失败:', err)
-      return false
     }
   }
 }
