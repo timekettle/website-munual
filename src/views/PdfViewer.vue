@@ -1,5 +1,5 @@
 <template>
-  <div class="pdf-viewer">
+  <div class="pdf-viewer" :class="{ embedded }">
     <div class="pdf-toolbar">
       <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
       <a class="download-btn" href="#" @click.prevent="downloadPdf">
@@ -8,8 +8,8 @@
     </div>
     <div class="mobile-download-bar">
       <a class="mobile-download-btn" href="#" @click.prevent="downloadPdf">
-        <img src="../assets/download.svg" alt="download" />
-        <span>{{ locale.download }}</span>
+        <!-- <img src="../assets/download.svg" alt="download" /> -->
+        <span>{{ locale.download }} （PDF）</span>
       </a>
     </div>
     <div class="pdf-loading" v-if="loading">
@@ -53,10 +53,14 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, onBeforeUnmount, nextTick, reactive } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, reactive } from 'vue'
 import { useRoute } from 'vue-router'
+import { track } from '../plugins/sensors'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
+
+const props = defineProps<{ embedded?: boolean; lang?: string }>()
+const { embedded } = props
 
 GlobalWorkerOptions.workerSrc = import.meta.env.BASE_URL + 'pdf.worker.min.js'
 
@@ -66,26 +70,16 @@ const i18n: Record<string, { download: string; loading: string; retry: string }>
   es: { download: 'Descargar', loading: 'Cargando...', retry: 'Reintentar' },
   ja: { download: 'ダウンロード', loading: '読み込み中...', retry: 'リトライ' },
   de: { download: 'Herunterladen', loading: 'Laden...', retry: 'Wiederholen' },
-  fr: { download: 'Télécharger', loading: 'Chargement...', retry: 'Réessayer' },
-  ko: { download: '다운로드', loading: '로딩 중...', retry: '재시도' },
-  th: { download: 'ดาวน์โหลด', loading: 'กำลังโหลด...', retry: 'ลองใหม่' },
-  ru: { download: 'Скачать', loading: 'Загрузка...', retry: 'Повторить' },
-  'zh-TW': { download: '下載', loading: '載入中...', retry: '重試' },
-  tr: { download: 'İndir', loading: 'Yükleniyor...', retry: 'Tekrar dene' },
-  uk: { download: 'Завантажити', loading: 'Завантаження...', retry: 'Повторити' },
 }
 
-const getLocale = (): { download: string; loading: string; retry: string } => {
-  const lang = navigator.language || 'en'
-  console.log("lang:", lang)
+const resolveLocale = (lang: string): { download: string; loading: string; retry: string } => {
   if (i18n[lang]) return i18n[lang]
-  if (lang === 'zh-TW') return i18n['zh-TW']
   const prefix = lang.split('-')[0]
   if (i18n[prefix]) return i18n[prefix]
   return i18n['en']
 }
 
-const locale = getLocale()
+const locale = computed(() => resolveLocale(props.lang || navigator.language || 'en'))
 
 const route = useRoute()
 const sncode = route.query.sncode as string | undefined
@@ -96,6 +90,7 @@ const isWechat = () => /MicroMessenger/i.test(navigator.userAgent)
 const downloadPdf = async () => {
   if (isWechat()) {
     window.location.href = pdfUrl
+    track('X1ProHelpSite_ManualDownload')
     return
   }
   const res = await fetch(pdfUrl)
@@ -107,13 +102,15 @@ const downloadPdf = async () => {
   a.style.display = 'none'
   document.body.appendChild(a)
   a.click()
+  // 下载成功发起时埋点
+  track('X1ProHelpSite_ManualDownload')
   setTimeout(() => {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   }, 200)
 }
 
-const pdfUrl = 'https://cdn.timekettle.co/X1_Meeting/manual.pdf'
+const pdfUrl = 'https://tmk-resources.oss-cn-shenzhen.aliyuncs.com/TimekettleX1/Video/X1-Meeting_Manual.pdf'
 const totalPages = ref(0)
 const currentPage = ref(1)
 const contentRef = ref<HTMLElement | null>(null)
@@ -376,6 +373,12 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+/* 内嵌在教程页「使用手册」tab 时，填满父容器而非整个视口 */
+.pdf-viewer.embedded {
+  width: 100%;
+  height: 100%;
+}
+
 .pdf-toolbar {
   display: flex;
   align-items: center;
@@ -580,11 +583,11 @@ onBeforeUnmount(() => {
     gap: 8px;
     width: 100%;
     height: 48px;
-    background: #fff;
-    border-radius: 12px;
-    border: 1px solid #191D26;
+    background: #0A85FF;
+    border-radius: 35px;
+    /* border: 1px solid #191D26; */
     text-decoration: none;
-    color: #191D26;
+    color: #FFFFFF;
     font-size: 16px;
     font-weight: 500;
   }

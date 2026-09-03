@@ -11,6 +11,9 @@ export default defineConfig({
       modernPolyfills: true,
     }),
   ],
+  server: {
+    port: 8080,
+  },
   build: {
     target: ['es2015', 'chrome64', 'safari12'],
   },
