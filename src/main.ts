@@ -1,13 +1,13 @@
 import { createApp } from 'vue'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
-import VConsole from 'vconsole'
+// import VConsole from 'vconsole'
 import App from './App.vue'
 import router from './router'
 import sensors from './plugins/sensors'
 import { applyDocumentTitle } from './i18n'
 
-new VConsole()
+// new VConsole()
 
 if (!(Map.prototype as any).getOrInsertComputed) {
   (Map.prototype as any).getOrInsertComputed = function (key: any, callbackInsert: (key: any) => any) {
