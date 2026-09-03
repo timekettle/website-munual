@@ -76,7 +76,7 @@
           :key="currentVideo.url"
           :src="currentVideo.url"
           :data-video-id="currentVideo.id"
-          :poster="posterUrl"
+          :poster="currentPoster"
           preload="metadata"
           playsinline
           @click="togglePlay"
@@ -364,7 +364,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { track } from '../plugins/sensors'
-import posterUrl from '../assets/tutorial/video-poster.svg'
 import iconLight from '../assets/icon_light.svg'
 import iconGroup from '../assets/icon_group.svg'
 import iconAsk from '../assets/icon_ask.svg'
@@ -521,6 +520,11 @@ const videoMeta: VideoMeta[] = [
   { id: 6, titleKey: 'videoCall', icon: iconVideo, url: callVideoUrl, urlByLang: { de: `${tutorialClipBase}/%E5%BE%B7%E8%AF%AD/%E9%80%9A%E8%AF%9D%E8%A7%86%E9%A2%91%E7%BF%BB%E8%AF%91.mp4`, ja: `${tutorialClipBase}/%E6%97%A5%E8%AF%AD/%E9%80%9A%E8%AF%9D%E8%A7%86%E9%A2%91%E7%BF%BB%E8%AF%91.mp4`, en: `${tutorialClipBase}/%E8%8B%B1%E6%96%87/%E9%80%9A%E8%AF%9D%E8%A7%86%E9%A2%91%E7%BF%BB%E8%AF%91.mp4`, es: `${tutorialClipBase}/%E8%A5%BF%E8%AF%AD/%E9%80%9A%E8%AF%9D%E8%A7%86%E9%A2%91%E7%BF%BB%E8%AF%91.mp4` }, duration: '0:44', durationByLang: { en: '0:50', es: '0:56', ja: '0:50', de: '0:58' } },
   { id: 7, titleKey: 'videoOther', icon: iconOther, url: otherUrl, urlByLang: { de: `${tutorialClipBase}/%E5%BE%B7%E8%AF%AD/%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD-%E6%97%A5%E5%BF%97%20%E5%8D%87%E7%BA%A7%20%E4%BD%A9%E6%88%B4.mp4`, ja: `${tutorialClipBase}/%E6%97%A5%E8%AF%AD/%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD-%E6%97%A5%E5%BF%97%20%E5%8D%87%E7%BA%A7%20%E4%BD%A9%E6%88%B4.mp4`, en: `${tutorialClipBase}/%E8%8B%B1%E6%96%87/%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD-%E6%97%A5%E5%BF%97%20%E5%8D%87%E7%BA%A7%20%E4%BD%A9%E6%88%B4.mp4`, es: `${tutorialClipBase}/%E8%A5%BF%E8%AF%AD/%E5%85%B6%E4%BB%96%E5%8A%9F%E8%83%BD-%E6%97%A5%E5%BF%97%20%E5%8D%87%E7%BA%A7%20%E4%BD%A9%E6%88%B4.mp4` }, duration: '3:17', durationByLang: { en: '1:44', es: '1:52', ja: '1:46', de: '1:52' } },
 ]
+
+// 用 OSS 视频截帧能力生成封面：t_1000 取第 1 秒那一帧，避开片头黑屏
+function videoSnapshot(url: string, w = 320, h = 180): string {
+  return `${url}?x-oss-process=video/snapshot,t_1000,f_jpg,w_${w},h_${h}`
+}
 
 const videos = computed<VideoItem[]>(() =>
   videoMeta.map((m) => ({
@@ -736,6 +740,9 @@ const playing = ref(false)
 const buffering = ref(false)
 const isHovering = ref(false)
 const shouldAutoplay = ref(false)
+// 当前视频是否已上报过「视频点击」：默认视频进入页面即选中、未经过 selectVideo，
+// 首次点击播放时才补埋；暂停→继续播放不重复埋
+const videoClickReported = ref(false)
 const currentTime = ref(0)
 const duration = ref(0)
 const speed = ref('1.0x')
@@ -778,6 +785,7 @@ const activeTimelineIndex = computed(() => {
 
 const langLabel = computed(() => languages.find((l) => l.code === currentLang.value)?.native ?? currentLang.value)
 const currentVideo = computed(() => videos.value.find((v) => v.id === currentVideoId.value) ?? videos.value[0])
+const currentPoster = computed(() => videoSnapshot(currentVideo.value.url, 640, 360))
 const timeline = computed<TimelineItem[]>(() => {
   const meta = timelineByLang[currentLang.value]?.[currentVideoId.value] ?? timelineMeta[currentVideoId.value]
   return (meta ?? []).map((it) => ({ seconds: it.seconds, label: t.value[it.key], key: it.key }))
@@ -892,6 +900,7 @@ function selectVideo(id: number) {
   fsChaptersOpen.value = false
   shouldAutoplay.value = true
   // 视频点击埋点
+  videoClickReported.value = true
   track('X1ProHelpSite_VideoClick', {
     VideoName: videoChineseName(id),
   })
@@ -945,6 +954,13 @@ async function togglePlay() {
   if (!v) return
   if (v.paused) {
     v.playbackRate = parseFloat(speed.value)
+    // 点击播放即视为一次「视频点击」：默认视频未经过 selectVideo，需在此补埋
+    if (!videoClickReported.value) {
+      videoClickReported.value = true
+      track('X1ProHelpSite_VideoClick', {
+        VideoName: videoChineseName(currentVideoId.value),
+      })
+    }
     try {
       await v.play()
     } catch (e) {
@@ -1348,6 +1364,8 @@ onMounted(() => {
   document.addEventListener('fullscreenchange', onFullscreenChange)
   window.addEventListener('resize', onWindowResize)
   window.addEventListener('keydown', onKeydown)
+  // 进入页面即上报一次系统语言选择：此时语言已按系统/默认语言确定
+  trackLanguageSelection(currentLang.value)
   // 小屏进入页面默认展开目录弹窗（对应设计稿「默认进入页」）
   if (window.matchMedia('(max-width: 768px)').matches) {
     openDrawer()
