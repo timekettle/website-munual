@@ -13,7 +13,7 @@ const router = createRouter({
     {
       path: '/x1m',
       name: 'x1m-pdf-viewer',
-      component: () => import('../views/PdfViewer.vue'),
+      component: () => import('../views/Tutorial.vue'),
     },
   ],
 })
